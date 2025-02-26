@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 
+module ParseMakefile where
+
 import Control.Monad (guard)
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
