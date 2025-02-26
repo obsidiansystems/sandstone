@@ -7,6 +7,7 @@ import Data.List.NonEmpty (NonEmpty)
 
 type ModuleName = NonEmpty Text
 
+-- | See https://downloads.haskell.org/ghc/latest/docs/users_guide/separate_compilation.html
 data Node
   = Node_Compile { moduleName :: ModuleName }
   -- | For `hs-boot` file
@@ -17,7 +18,7 @@ data Node
 data Edge
   -- | For .hi/.hi-boot
   = Edge_Interface Node
-  -- | For .o
+  -- | For .o/.o-boot
   --
-  -- N.B./ .o-boot
+  -- N.B. .o-boot is pretty fake.
   | Edge_Object Node
