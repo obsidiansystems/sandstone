@@ -12,3 +12,6 @@ dist-newstyle
 cabal.project.local
 .ghc.environment.*
 **/ghcid-output.txt
+
+# GHC -M makes these
+Makefile*
