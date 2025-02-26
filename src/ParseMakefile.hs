@@ -49,17 +49,23 @@ recordNode ((targetModuleName, eT), (depModuleName, eD)) = do
           , T.intercalate "." $ toList targetModuleName
           , T.intercalate "." $ toList depModuleName
           ]
+      -- Dependency on the interface of another module
       Just g' -> pure [g' depModuleName]
     pure (f targetModuleName, deps)
 
   where
     targetExt = \case
+      -- object file cases
       ".o" -> Right Node_Compile
       ".o-boot" -> Right Node_PreCompile
+      -- error case
       x -> Left $ T.unwords ["Unrecoginized extension", x, "for target"]
 
     depExt = \case
+      -- source file dep case
       ".hs" -> Right $ Nothing
+      -- interface file dep cases
       ".hi" -> Right $ Just $ Edge_Interface . Node_Compile
       ".hi-boot" -> Right $ Just $ Edge_Interface . Node_PreCompile
+      -- error case
       x -> Left $ T.unwords ["Unrecoginized extension", x, "for dependency"]
