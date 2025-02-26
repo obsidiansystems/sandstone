@@ -9,6 +9,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
 
+import Graph
+
 main :: IO ()
 main = do
   makefile <- T.readFile "Makefile"
