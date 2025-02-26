@@ -5,7 +5,7 @@
 module ParseMakefile where
 
 import Control.Monad (guard, mapM_)
-import Data.List.NonEmpty 
+import Data.List.NonEmpty
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -34,14 +34,32 @@ parseModuleLine line = do
     moduleName <- nonEmpty $ T.splitOn "/" path
     pure (moduleName, ext)
 
-recordNode :: ((ModuleName, Text), (ModuleName, Text)) -> Maybe (Node, [Edge])
-recordNode = \case
-  ((moduleName, ".o"), (moduleName', ".hs")) 
-    | moduleName == moduleName' -> Just (Node_Compile moduleName, [])
-  ((moduleName, ".o-boot"), (moduleName', ".hs")) 
-    | moduleName == moduleName' -> Just (Node_PreCompile moduleName, [])
-  ((moduleName, ".o"), (interfaceName, ".hi")) -> 
-    Just (Node_Compile moduleName, [Edge_Interface $ Node_Compile interfaceName])
-  ((moduleName, ".o-boot"), (interfaceName, ".hi")) ->
-    Just (Node_PreCompile moduleName, [Edge_Interface $ Node_Compile interfaceName])
-  _ -> Nothing
+recordNode :: ((ModuleName, Text), (ModuleName, Text)) -> Either Text (Node, [Edge])
+recordNode ((targetModuleName, eT), (depModuleName, eD)) = do
+    f <- targetExt eT
+    g <- depExt eD
+    deps <- case g of
+      -- Mere source file dep, which we don't track as a dep since it is conditional
+      -- However, want to to make sure the node exists if it has no other deps
+      Nothing ->
+        if targetModuleName == depModuleName
+        then pure []
+        else Left $ T.unwords
+          [ "Source file and object file's module names did not match:"
+          , T.intercalate "." $ toList targetModuleName
+          , T.intercalate "." $ toList depModuleName
+          ]
+      Just g' -> pure [g' depModuleName]
+    pure (f targetModuleName, deps)
+
+  where
+    targetExt = \case
+      ".o" -> Right Node_Compile
+      ".o-boot" -> Right Node_PreCompile
+      x -> Left $ T.unwords ["Unrecoginized extension", x, "for target"]
+
+    depExt = \case
+      ".hs" -> Right $ Nothing
+      ".hi" -> Right $ Just $ Edge_Interface . Node_Compile
+      ".hi-boot" -> Right $ Just $ Edge_Interface . Node_PreCompile
+      x -> Left $ T.unwords ["Unrecoginized extension", x, "for dependency"]
