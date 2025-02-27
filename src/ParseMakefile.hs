@@ -68,6 +68,7 @@ recordNode ((targetModuleName, eT), (depModuleName, eD)) =
     depExt = \case
       -- source file dep case
       ".hs" -> Success Nothing
+      ".hs-boot" -> Success Nothing
       -- interface file dep cases
       ".hi" -> Success $ Just $ Edge_Interface . Node_Compile
       ".hi-boot" -> Success $ Just $ Edge_Interface . Node_PreCompile
