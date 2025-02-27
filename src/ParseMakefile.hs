@@ -1,16 +1,16 @@
-{-# LANGUAGE ImportQualifiedPost #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
-
 module ParseMakefile where
 
 import Control.Monad (guard, mapM_)
-import Data.List.NonEmpty
+import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty qualified as NEL
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
--- import Data.Validation
+import Data.Foldable
+import Data.Validation
+import System.Nix.StorePath
+import System.Nix.Derivation
 
 import Graph
 
@@ -35,41 +35,41 @@ parseModuleLine line = do
  where
   parseFilePath file = do
     let (path, ext) = T.breakOn "." file
-    moduleName <- nonEmpty $ T.splitOn "/" path
+    moduleName <- NEL.nonEmpty $ T.splitOn "/" path
     pure (moduleName, ext)
 
-recordNode :: ((ModuleName, Text), (ModuleName, Text)) -> Either Text (Node, [Edge])
-recordNode ((targetModuleName, eT), (depModuleName, eD)) = do
-    f <- targetExt eT
-    g <- depExt eD
-    deps <- case g of
-      -- Mere source file dep, which we don't track as a dep since it is conditional
-      -- However, want to to make sure the node exists if it has no other deps
-      Nothing ->
-        if targetModuleName == depModuleName
-        then pure []
-        else Left $ T.unwords
-          [ "Source file and object file's module names did not match:"
-          , T.intercalate "." $ toList targetModuleName
-          , T.intercalate "." $ toList depModuleName
-          ]
-      -- Dependency on the interface of another module
-      Just g' -> pure [g' depModuleName]
-    pure (f targetModuleName, deps)
+recordNode :: ((ModuleName, Text), (ModuleName, Text)) -> Validation (NonEmpty Text) (Node, [Edge])
+recordNode ((targetModuleName, eT), (depModuleName, eD)) =
+  ((,) <$> targetExt eT <*> depExt eD) `bindValidation` \(f, g) ->
+    let
+      deps = case g of
+        -- Mere source file dep, which we don't track as a dep since it is conditional
+        -- However, want to to make sure the node exists if it has no other deps
+        Nothing ->
+          if targetModuleName == depModuleName
+          then pure []
+          else Failure $ NEL.singleton $ T.unwords
+            [ "Source file and object file's module names did not match:"
+            , T.intercalate "." $ toList targetModuleName
+            , T.intercalate "." $ toList depModuleName
+            ]
+        -- Dependency on the interface of another module
+        Just g' -> pure [g' depModuleName]
+    in (\ds -> (f targetModuleName, ds)) <$> deps
 
   where
     targetExt = \case
       -- object file cases
-      ".o" -> Right Node_Compile
-      ".o-boot" -> Right Node_PreCompile
+      ".o" -> Success Node_Compile
+      ".o-boot" -> Success Node_PreCompile
       -- error case
-      x -> Left $ T.unwords ["Unrecoginized extension", x, "for target"]
+      x -> Failure $ NEL.singleton $ T.unwords ["Unrecoginized extension", x, "for target"]
 
     depExt = \case
       -- source file dep case
-      ".hs" -> Right $ Nothing
+      ".hs" -> Success Nothing
       -- interface file dep cases
-      ".hi" -> Right $ Just $ Edge_Interface . Node_Compile
-      ".hi-boot" -> Right $ Just $ Edge_Interface . Node_PreCompile
+      ".hi" -> Success $ Just $ Edge_Interface . Node_Compile
+      ".hi-boot" -> Success $ Just $ Edge_Interface . Node_PreCompile
       -- error case
-      x -> Left $ T.unwords ["Unrecoginized extension", x, "for dependency"]
+      x -> Failure $ NEL.singleton $ T.unwords ["Unrecoginized extension", x, "for dependency"]
