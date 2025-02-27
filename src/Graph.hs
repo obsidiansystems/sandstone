@@ -14,6 +14,7 @@ data Node
   | Node_PreCompile { moduleName :: ModuleName }
   -- | Not sure how to get from Makefile
   | Node_Link
+  deriving (Show, Ord, Eq)
 
 data Edge
   -- | For .hi/.hi-boot
@@ -22,3 +23,4 @@ data Edge
   --
   -- N.B. .o-boot is pretty fake.
   | Edge_Object Node
+  deriving (Show, Ord, Eq)

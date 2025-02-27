@@ -1,28 +1,16 @@
 module ParseMakefile where
 
-import Control.Monad (guard, mapM_)
+import Control.Monad
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NEL
-import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.IO qualified as T
 import Data.Foldable
 import Data.Validation
 import System.Nix.StorePath
 import System.Nix.Derivation
 
 import Graph
-
-main :: IO ()
-main = do
-  makefile <- T.readFile "example/Makefile"
-  print makefile
-  let moduleLines0 = catMaybes $ parseModuleLine <$> T.lines makefile
-  mapM_ print moduleLines0
-  --(errs, moduleLines <- flip traverse moduleLines0 $ \line ->
-  --  case recordNode line of
-  --    Left e -> Left ["error when parsing line
 
 parseModuleLine :: Text -> Maybe ((ModuleName, Text), (ModuleName, Text))
 parseModuleLine line = do
