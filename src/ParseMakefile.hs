@@ -10,6 +10,7 @@ import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
+-- import Data.Validation
 
 import Graph
 
@@ -17,8 +18,11 @@ main :: IO ()
 main = do
   makefile <- T.readFile "example/Makefile"
   print makefile
-  let modules = catMaybes $ parseModuleLine <$> T.lines makefile
-  mapM_ print modules
+  let moduleLines0 = catMaybes $ parseModuleLine <$> T.lines makefile
+  mapM_ print moduleLines0
+  --(errs, moduleLines <- flip traverse moduleLines0 $ \line ->
+  --  case recordNode line of
+  --    Left e -> Left ["error when parsing line
 
 parseModuleLine :: Text -> Maybe ((ModuleName, Text), (ModuleName, Text))
 parseModuleLine line = do
