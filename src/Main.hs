@@ -18,6 +18,7 @@ import Data.Text.Encoding qualified as T
 import Data.Text.IO qualified as T
 import Data.Validation
 import Data.Vector qualified as V
+import System.Directory (withCurrentDirectory)
 import System.Nix.ContentAddress
 import System.Nix.Derivation
 import System.Nix.JSON ()
@@ -125,7 +126,41 @@ nixDerivationAdd drv = do
 
 localStoreArgs :: [String]
 localStoreArgs =
-  [ "--store", "/tmp/sand"
+  [ "--store", storePath
   , "--extra-experimental-features", "nix-command ca-derivations"
   , "--substituters", "http://cache.nixos.org"
   ]
+
+storePath :: FilePath
+storePath = "/tmp/sand"
+
+ghcGenerateMakefile :: StorePath -> IO ()
+ghcGenerateMakefile ghcStorePath = do 
+  let ghcBinPath = T.unpack $ storePathToText storeDir ghcStorePath <> "/bin/ghc"
+  callCommand $ ghcBinPath <> " -M *.hs"
+
+setupDemoStore :: IO ()
+setupDemoStore = do
+  Right ghcStorePath <- nixBuildInDepNixpkgs "ghc"
+  nixCopyTo (localStore storePath) ghcStorePath
+  withCurrentDirectory "./example" $ 
+    ghcGenerateMakefile ghcStorePath
+  pure ()
+ where
+  localStore = ("local?root=" <>)
+
+nixIntantiateInDepNixpkgs :: String -> IO (Either InvalidPathError StorePath)
+nixIntantiateInDepNixpkgs attr = do
+  str <- readProcess "nix-instantiate" ["./dep/nixpkgs", "-A", attr] ""
+  pure $ parsePathFromText storeDir $ T.strip $ T.pack str
+
+nixBuildInDepNixpkgs :: String -> IO (Either InvalidPathError StorePath)
+nixBuildInDepNixpkgs attr = do
+  str <- readProcess "nix-build" ["./dep/nixpkgs", "-A", attr] ""
+  pure $ parsePathFromText storeDir $ T.strip $ T.pack str
+
+nixCopyTo :: FilePath -> StorePath -> IO ()
+nixCopyTo store sp = do
+  str <- readProcess "nix" ["copy", "--no-check-sigs", "--to", store, T.unpack $ storePathToText storeDir sp] ""
+  print str
+  pure ()
