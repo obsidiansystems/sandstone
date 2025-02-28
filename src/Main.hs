@@ -20,12 +20,13 @@ import Data.Validation
 import Data.Vector qualified as V
 import System.Directory (withCurrentDirectory)
 import System.Nix.ContentAddress
+import System.Nix.DerivedPath
 import System.Nix.Derivation
 import System.Nix.JSON ()
 import System.Nix.Hash
 import System.Nix.OutputName
+import System.Nix.Placeholder
 import System.Nix.StorePath
-import System.Nix.DerivedPath
 import System.Process hiding (env)
 
 import Sandstone.MakefileGraph
@@ -63,6 +64,19 @@ writeDerivation memo node deps = case node of
     print source
 
     Just deps' <- pure $ traverse (flip Map.lookup memo) deps
+    putStrLn "==> DEPS:"
+    putStrLn $ groom deps'
+    putStrLn "DEPS <=="
+
+    Right ghcPath <- nixIntantiateInDepNixpkgs "ghc"
+    print "GHCPATH"
+    print ghcPath
+    Right coreutilsPath <- nixIntantiateInDepNixpkgs "coreutils"
+    print coreutilsPath
+    
+    
+    let ghcPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (SingleDerivedPath_Opaque ghcPath) (OutputName $ bad "out")
+    let coreutilsPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (SingleDerivedPath_Opaque coreutilsPath) (OutputName $ bad "out")
 
     Right result2 <- nixDerivationAdd $ Derivation
       { name = bad $ "compile-" <> T.intercalate "." (NEL.toList $ moduleName module')
@@ -70,6 +84,8 @@ writeDerivation memo node deps = case node of
       , inputs = foldMap
           derivationInputsFromSingleDerivedPath
           $ SingleDerivedPath_Opaque source
+          : SingleDerivedPath_Built (SingleDerivedPath_Opaque ghcPath) (OutputName $ bad "out")
+          : SingleDerivedPath_Built (SingleDerivedPath_Opaque coreutilsPath) (OutputName $ bad "out")
           : (flip SingleDerivedPath_Built (OutputName $ bad "interface") . SingleDerivedPath_Opaque <$> deps')
       , platform = "x86_64-linux"
       , builder = "/bin/sh"
@@ -78,6 +94,7 @@ writeDerivation memo node deps = case node of
       , env = Map.fromList
           [ ("object", objectPlaceholder)
           , ("interface", interfacePlaceholder)
+          , ("PATH", coreutilsPlaceholder <> "/bin")
           ]
       }
     print result2
@@ -116,7 +133,7 @@ nixStoreAdd fp name = do
 
 nixStoreRealise :: StorePath -> IO ()
 nixStoreRealise fp =
-  callProcess "nix" (localStoreArgs <> ["build", T.unpack $ storePathToText storeDir fp <> "^*", "-v"])
+  callProcess "nix" (localStoreArgs <> ["build", "-L", T.unpack $ storePathToText storeDir fp <> "^*", "-v"])
 
 nixDerivationAdd :: Derivation -> IO (Either InvalidPathError StorePath)
 nixDerivationAdd drv = do
@@ -129,6 +146,7 @@ localStoreArgs =
   [ "--store", storePath
   , "--extra-experimental-features", "nix-command ca-derivations"
   , "--substituters", "http://cache.nixos.org"
+  , "--builders", ""
   ]
 
 storePath :: FilePath
@@ -151,7 +169,7 @@ setupDemoStore = do
 
 nixIntantiateInDepNixpkgs :: String -> IO (Either InvalidPathError StorePath)
 nixIntantiateInDepNixpkgs attr = do
-  str <- readProcess "nix-instantiate" ["./dep/nixpkgs", "-A", attr] ""
+  str <- readProcess "nix-instantiate" (localStoreArgs <> ["./dep/nixpkgs", "-A", attr]) ""
   pure $ parsePathFromText storeDir $ T.strip $ T.pack str
 
 nixBuildInDepNixpkgs :: String -> IO (Either InvalidPathError StorePath)
