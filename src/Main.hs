@@ -36,25 +36,40 @@ main :: IO ()
 main = do
   makefile <- T.readFile "example/Makefile"
   print makefile
+
   (graph, lookupVertex) <- case parseMakefile makefile of
     Failure e -> fail $ show e
     Success a -> pure a
+
   let todo = fmap ((\(a, _, b) -> (a, b)) . lookupVertex) $ reverseTopSort graph
-  memo <- flip execStateT Map.empty $ mapM_ (uncurry $ writeDerivation') todo
+
+  Right ghcDrvPath <- nixIntantiateInDepNixpkgs "ghc"
+  Right coreutilsDrvPath <- nixIntantiateInDepNixpkgs "coreutils"
+
+  let ctx = Ctx
+       { ghcDrvPath = SingleDerivedPath_Opaque ghcDrvPath
+       , coreutilsDrvPath = SingleDerivedPath_Opaque coreutilsDrvPath
+       }
+
+  memo <- flip execStateT Map.empty $ mapM_ (uncurry $ writeDerivation' ctx) todo
 
   nixStoreRealise $ (memo Map.!) $ (\(a, _, _) -> a) $ lookupVertex $ Prelude.head $ topSort graph
 
 type DrvMemo = Map Node StorePath
 
+data Ctx = Ctx
+  { ghcDrvPath :: SingleDerivedPath
+  , coreutilsDrvPath :: SingleDerivedPath
+  }
 
-writeDerivation' :: Node -> [Node] -> StateT DrvMemo IO ()
-writeDerivation' node deps = do
+writeDerivation' :: Ctx -> Node -> [Node] -> StateT DrvMemo IO ()
+writeDerivation' ctx node deps = do
   memo <- get
-  drvPath <- lift $ writeDerivation memo node deps
+  drvPath <- lift $ writeDerivation ctx memo node deps
   modify $ Map.insert node drvPath
 
-writeDerivation :: DrvMemo -> Node -> [Node] -> IO StorePath
-writeDerivation memo node deps = case node of
+writeDerivation :: Ctx -> DrvMemo -> Node -> [Node] -> IO StorePath
+writeDerivation ctx memo node deps = case node of
   Node_Compile module' -> do
     print module'
 
@@ -65,18 +80,12 @@ writeDerivation memo node deps = case node of
 
     Just deps' <- pure $ traverse (flip Map.lookup memo) deps
     putStrLn "==> DEPS:"
-    putStrLn $ groom deps'
+    print deps'
     putStrLn "DEPS <=="
-
-    Right ghcPath <- nixIntantiateInDepNixpkgs "ghc"
-    print "GHCPATH"
-    print ghcPath
-    Right coreutilsPath <- nixIntantiateInDepNixpkgs "coreutils"
-    print coreutilsPath
     
     
-    let ghcPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (SingleDerivedPath_Opaque ghcPath) (OutputName $ bad "out")
-    let coreutilsPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (SingleDerivedPath_Opaque coreutilsPath) (OutputName $ bad "out")
+    let ghcPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (ghcDrvPath ctx) (OutputName $ bad "out")
+    let coreutilsPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (coreutilsDrvPath ctx) (OutputName $ bad "out")
 
     Right result2 <- nixDerivationAdd $ Derivation
       { name = bad $ "compile-" <> T.intercalate "." (NEL.toList $ moduleName module')
@@ -84,31 +93,29 @@ writeDerivation memo node deps = case node of
       , inputs = foldMap
           derivationInputsFromSingleDerivedPath
           $ SingleDerivedPath_Opaque source
-          : SingleDerivedPath_Built (SingleDerivedPath_Opaque ghcPath) (OutputName $ bad "out")
-          : SingleDerivedPath_Built (SingleDerivedPath_Opaque coreutilsPath) (OutputName $ bad "out")
+          : SingleDerivedPath_Built (ghcDrvPath ctx) (OutputName $ bad "out")
+          : SingleDerivedPath_Built (ghcDrvPath ctx) (OutputName $ bad "out")
           : (flip SingleDerivedPath_Built (OutputName $ bad "interface") . SingleDerivedPath_Opaque <$> deps')
       , platform = "x86_64-linux"
       , builder = "/bin/sh"
       , args = V.fromList 
-          ["-c", "set -xeu; echo $PATH >> $interface ; echo " <> "$PATH" <> " >> $object ;"]
+          [ "-c"
+          , T.intercalate ";"
+            [ "set -xeu"
+            , ghcPlaceholder <> "/bin/ghc --version"
+            , "echo $PATH >> $interface"
+            , "echo " <> "$PATH" <> " >> $object"
+            ]
+          ]
       , env = Map.fromList
-          [ ("object", objectPlaceholder)
-          , ("interface", interfacePlaceholder)
+          [ ("object", renderPlaceholder $ createPlaceholder $ OutputName $ bad "object")
+          , ("interface", renderPlaceholder $ createPlaceholder $ OutputName $ bad "interface")
           , ("PATH", coreutilsPlaceholder <> "/bin")
           ]
       }
     print result2
     pure result2
   Node_Link -> fail "not yet implemented"
-
-
-objectPlaceholder, interfacePlaceholder :: Text
-
--- | For the output called "object" of the derivation that uses this placeholder
-objectPlaceholder = "/07fvp8gkd5mhhfi1lqjfwq7sxnpmdfczz27lizfxiz6fpwad8sy4"
-
--- | For the output called "interface" of the derivation that uses this placeholder
-interfacePlaceholder = "/1ang7n5l91vn079693l42ahmcxgf34r0qad1l01y4lf7d3cwm5lg"
 
 caOutputSpec :: ContentAddressedDerivationOutput
 caOutputSpec = ContentAddressedDerivationOutput
