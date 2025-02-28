@@ -1,5 +1,6 @@
 module Main where
 
+import Data.Graph
 import Data.Maybe (catMaybes)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
@@ -17,6 +18,6 @@ main = do
     Failure e -> fail $ show e
     Success a -> pure a
   pure ()
-  -- let (graph, _) = graphFromEdges' $ fmap (\(node, edges) -> (node, undefined, edges)) flattenedGraph
-  -- print graph
+  let (graph, _) = graphFromEdges' $ fmap (\(node, edges) -> (node, node, edges)) nodes
+  print graph
 

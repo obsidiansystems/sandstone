@@ -26,7 +26,11 @@ parseModuleLine line = do
     moduleName <- NEL.nonEmpty $ T.splitOn "/" path
     pure (moduleName, ext)
 
-recordNode :: ((ModuleName, Text), (ModuleName, Text)) -> Validation (NonEmpty Text) (Node, [Edge])
+data ErrorTree
+  = Error Text
+  | Context Text (NonEmpty ErrorTree)
+
+recordNode :: ((ModuleName, Text), (ModuleName, Text)) -> Validation (NonEmpty Text) (Node, [Node])
 recordNode ((targetModuleName, eT), (depModuleName, eD)) =
   ((,) <$> targetExt eT <*> depExt eD) `bindValidation` \(f, g) ->
     let
@@ -58,7 +62,7 @@ recordNode ((targetModuleName, eT), (depModuleName, eD)) =
       ".hs" -> Success Nothing
       ".hs-boot" -> Success Nothing
       -- interface file dep cases
-      ".hi" -> Success $ Just $ Edge_Interface . Node_Compile
-      ".hi-boot" -> Success $ Just $ Edge_Interface . Node_PreCompile
+      ".hi" -> Success $ Just $ Node_Compile
+      ".hi-boot" -> Success $ Just $ Node_PreCompile
       -- error case
       x -> Failure $ NEL.singleton $ T.unwords ["Unrecoginized extension", x, "for dependency"]
