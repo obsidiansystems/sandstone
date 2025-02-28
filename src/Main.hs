@@ -5,7 +5,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Data.Validation
 
-import ParseMakefile qualified
+import Sandstone.ParseMakefile qualified as ParseMakefile
 
 main :: IO ()
 main = do

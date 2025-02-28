@@ -1,4 +1,4 @@
-module ParseMakefile where
+module Sandstone.ParseMakefile where
 
 import Control.Monad
 import Data.List.NonEmpty (NonEmpty)
@@ -10,7 +10,7 @@ import Data.Validation
 import System.Nix.StorePath
 import System.Nix.Derivation
 
-import Graph
+import Sandstone.Graph
 
 parseModuleLine :: Text -> Maybe ((ModuleName, Text), (ModuleName, Text))
 parseModuleLine line = do

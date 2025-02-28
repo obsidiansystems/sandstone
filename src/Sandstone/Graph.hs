@@ -1,5 +1,5 @@
 {-# LANGUAGE NoFieldSelectors #-}
-module Graph where
+module Sandstone.Graph where
 
 import Data.Graph
 import Data.Text (Text)
