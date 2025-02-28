@@ -4,7 +4,7 @@ module Main where
 import Control.Monad.Trans.State
 import Control.Monad.Trans.Class
 import Data.Aeson qualified as Aeson
-import Data.ByteString.Lazy as BSL
+import Data.ByteString.Lazy qualified as BSL
 import Data.Default
 import Data.Dependent.Sum
 import Data.Graph
@@ -68,13 +68,17 @@ writeDerivation' ctx node deps = do
   drvPath <- lift $ writeDerivation ctx memo node deps
   modify $ Map.insert node drvPath
 
+interface, object :: OutputName
+object = OutputName $ bad "object"
+interface = OutputName $ bad "interface"
+
 writeDerivation :: Ctx -> DrvMemo -> Node -> [Node] -> IO StorePath
 writeDerivation ctx memo node deps = case node of
   Node_Compile module' -> do
     print module'
 
     Right source <- nixStoreAdd
-      ("example/" <> sourcePath module')
+      ("example/" <> pathNoExt module' <> "." <> T.unpack (sourceExt module'))
       (T.intercalate "." (NEL.toList $ moduleName module') <> "." <> sourceExt module')
     print source
 
@@ -82,40 +86,48 @@ writeDerivation ctx memo node deps = case node of
     putStrLn "==> DEPS:"
     print deps'
     putStrLn "DEPS <=="
-    
-    
+
+
     let ghcPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (ghcDrvPath ctx) (OutputName $ bad "out")
     let coreutilsPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (coreutilsDrvPath ctx) (OutputName $ bad "out")
 
     Right result2 <- nixDerivationAdd $ Derivation
       { name = bad $ "compile-" <> T.intercalate "." (NEL.toList $ moduleName module')
-      , outputs = outputsFromList ["object", "interface"]
+      , outputs = outputsFromList [object, interface]
       , inputs = foldMap
           derivationInputsFromSingleDerivedPath
           $ SingleDerivedPath_Opaque source
           : SingleDerivedPath_Built (ghcDrvPath ctx) (OutputName $ bad "out")
-          : SingleDerivedPath_Built (ghcDrvPath ctx) (OutputName $ bad "out")
-          : (flip SingleDerivedPath_Built (OutputName $ bad "interface") . SingleDerivedPath_Opaque <$> deps')
+          : SingleDerivedPath_Built (coreutilsDrvPath ctx) (OutputName $ bad "out")
+          : (flip SingleDerivedPath_Built interface . SingleDerivedPath_Opaque <$> deps')
       , platform = "x86_64-linux"
       , builder = "/bin/sh"
-      , args = V.fromList 
+      , args = let
+         objectPath = "$object/" <> T.intercalate "/" (NEL.toList $ moduleName module') <> "." <> objectExt module'
+         interfacePath = "$interface/" <> T.intercalate "/" (NEL.toList $ moduleName module') <> "." <> interfaceExt module'
+        in V.fromList
           [ "-c"
           , T.intercalate ";"
             [ "set -xeu"
-            , T.intercalate " "
+            , "echo $PATH"
+            , "mkdir -p $(dirname " <> objectPath <> ")"
+            , "mkdir -p $(dirname " <> interfacePath <> ")"
+            , T.intercalate " " $
               [ ghcPlaceholder <> "/bin/ghc"
               , "-c"
               , storePathToText storeDir source
-              , "-o", "$object"
-              , "-ohi", "$interface"
+              , "-o", objectPath
+              , "-ohi", interfacePath
+              , "-v"
               ]
-            , "echo $PATH >> $interface"
-            , "echo " <> "$PATH" <> " >> $object"
+              <> concatMap
+                (\d -> ["-hidir", renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (SingleDerivedPath_Opaque d) (OutputName $ bad "interface")])
+                deps'
             ]
           ]
       , env = Map.fromList
-          [ ("object", renderPlaceholder $ createPlaceholder $ OutputName $ bad "object")
-          , ("interface", renderPlaceholder $ createPlaceholder $ OutputName $ bad "interface")
+          [ ("object", renderPlaceholder $ createPlaceholder object)
+          , ("interface", renderPlaceholder $ createPlaceholder interface)
           , ("PATH", coreutilsPlaceholder <> "/bin")
           ]
       }
@@ -129,8 +141,8 @@ caOutputSpec = ContentAddressedDerivationOutput
   , caHashAlgo = Some HashAlgo_SHA256
   }
 
-outputsFromList :: [Text] -> DSum DerivationType (Map OutputName)
-outputsFromList outputs = DerivationType_ContentAddressing :=> (Map.fromList $ (\on -> (OutputName $ bad on, caOutputSpec)) <$> outputs)
+outputsFromList :: [OutputName] -> DSum DerivationType (Map OutputName)
+outputsFromList outputs = DerivationType_ContentAddressing :=> (Map.fromList $ (\on -> (on, caOutputSpec)) <$> outputs)
 
 bad :: Text -> StorePathName
 bad = either (error . show) id . mkStorePathName
@@ -166,7 +178,7 @@ storePath :: FilePath
 storePath = "/tmp/sand"
 
 ghcGenerateMakefile :: StorePath -> IO ()
-ghcGenerateMakefile ghcStorePath = do 
+ghcGenerateMakefile ghcStorePath = do
   let ghcBinPath = T.unpack $ storePathToText storeDir ghcStorePath <> "/bin/ghc"
   callCommand $ ghcBinPath <> " -M *.hs"
 
@@ -174,7 +186,7 @@ setupDemoStore :: IO ()
 setupDemoStore = do
   Right ghcStorePath <- nixBuildInDepNixpkgs "ghc"
   nixCopyTo (localStore storePath) ghcStorePath
-  withCurrentDirectory "./example" $ 
+  withCurrentDirectory "./example" $
     ghcGenerateMakefile ghcStorePath
   pure ()
  where

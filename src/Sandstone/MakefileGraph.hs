@@ -29,22 +29,17 @@ data Node
   | Node_Link
   deriving (Show, Ord, Eq)
 
+pathNoExt :: Module -> FilePath
+pathNoExt module' = T.unpack $ T.intercalate "/" (toList $ moduleName module')
+
 sourceExt :: Module -> Text
 sourceExt module' =
   if hsBoot module' then "hs-boot" else "hs"
 
-sourcePath :: Module -> FilePath
-sourcePath module' =
-  T.unpack $ T.intercalate "/" (toList $ moduleName module')
-  <> "."
-  <> sourceExt module'
-
 interfaceExt :: Module -> Text
 interfaceExt module' =
-  if hsBoot module' then "hs-boot" else "hs"
+  if hsBoot module' then "hi-boot" else "hi"
 
-interfacePath :: Module -> FilePath
-interfacePath module' =
-  T.unpack $ T.intercalate "/" (toList $ moduleName module')
-  <> "."
-  <> interfaceExt module'
+objectExt :: Module -> Text
+objectExt module' =
+  if hsBoot module' then "o-boot" else "o"
