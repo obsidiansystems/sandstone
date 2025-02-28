@@ -5,7 +5,7 @@ source-repository-package
     -- location: https://github.com/haskell-nix/hnix-store.git
     location: https://github.com/obsidiansystems/hnix-store.git
     branch: derivation-work
-    tag: 9a84f655aba91a2b50d1a21e6ad1e18d6ffdbbe3
+    tag: a326b0d9ef2900d189ea8758f19f6f9e95d200f4
     subdir: hnix-store-core
     subdir: hnix-store-json
     -- subdir: hnix-store-remote
