@@ -92,4 +92,4 @@ nixDerivationAdd drv = do
   pure $ parsePathFromText def $ T.strip $ T.pack str
 
 localStoreArgs :: [String]
-localStoreArgs = ["--store", "/tmp/sand", "--extra-experimental-features", "ca-derivations"]
+localStoreArgs = ["--store", "/tmp/sand", "--extra-experimental-features", "nix-command ca-derivations"]
