@@ -102,7 +102,13 @@ writeDerivation ctx memo node deps = case node of
           [ "-c"
           , T.intercalate ";"
             [ "set -xeu"
-            , ghcPlaceholder <> "/bin/ghc --version"
+            , T.intercalate " "
+              [ ghcPlaceholder <> "/bin/ghc"
+              , "-c"
+              , storePathToText storeDir source
+              , "-o", "$object"
+              , "-ohi", "$interface"
+              ]
             , "echo $PATH >> $interface"
             , "echo " <> "$PATH" <> " >> $object"
             ]
