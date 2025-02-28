@@ -32,6 +32,8 @@ executable sandstone
     hnix-store-json,
     text,
     containers,
+    dependent-sum,
+    vector,
 
   hs-source-dirs: src
 
