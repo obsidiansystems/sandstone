@@ -26,19 +26,20 @@ executable sandstone
   -- other-extensions:
 
   build-depends:
-    base ^>=4.18.2.1,
     aeson,
+    base ^>=4.18.2.1,
     bytestring,
+    containers,
     data-default,
-    validation,
+    dependent-sum,
+    directory,
     hnix-store-core,
     hnix-store-json,
-    text,
-    containers,
-    dependent-sum,
     process,
-    vector,
+    text,
     transformers,
+    validation,
+    vector,
 
   hs-source-dirs: src
 
