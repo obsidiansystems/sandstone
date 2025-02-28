@@ -38,6 +38,7 @@ executable sandstone
     dependent-sum,
     process,
     vector,
+    transformers,
 
   hs-source-dirs: src
 
