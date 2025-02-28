@@ -1,5 +1,6 @@
 module Main where
 
+import Data.Default
 import Data.Dependent.Sum
 import Data.Graph
 import Data.Map qualified as Map
@@ -16,6 +17,7 @@ import System.Nix.Derivation
 import System.Nix.Hash
 import System.Nix.OutputName
 import System.Nix.StorePath
+import System.Process (readProcess)
 
 import Sandstone.Error
 import Sandstone.MakefileParse qualified as MakefileParse
@@ -35,7 +37,6 @@ main = do
     of
       Failure e -> fail $ show e
       Success a -> pure a
-  pure ()
   let (graph, _) = graphFromEdges' $ fmap (\(node, edges') -> (node, node, edges')) nodes
   print graph
 
@@ -62,9 +63,15 @@ exampleDrv = Derivation
     }
   , platform = "x86_64-linux"
   , builder = "echo"
-  , args = V.fromList ["-c"]
+  , args = V.fromList ["-c", "set -xeu; echo" <> "" <> " >> $object ;" ]
   , env = Map.empty
   }
 
  where
    bad = either (error . show) id . mkStorePathName
+
+nixStoreAdd :: FilePath -> IO (Either InvalidPathError StorePath)
+nixStoreAdd fp = do
+  str <- readProcess "nix-store" ["--add", fp] ""
+  pure $ parsePathFromText def $ T.pack str
+
