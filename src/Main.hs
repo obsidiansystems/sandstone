@@ -1,5 +1,7 @@
 module Main where
 
+import Data.Aeson qualified as Aeson
+import Data.ByteString.Lazy as BSL
 import Data.Default
 import Data.Dependent.Sum
 import Data.Graph
@@ -9,11 +11,13 @@ import Data.Set qualified as Set
 import Data.Some
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as T
 import Data.Text.IO qualified as T
 import Data.Validation
 import Data.Vector qualified as V
 import System.Nix.ContentAddress
 import System.Nix.Derivation
+import System.Nix.JSON ()
 import System.Nix.Hash
 import System.Nix.OutputName
 import System.Nix.StorePath
@@ -24,6 +28,12 @@ import Sandstone.MakefileParse qualified as MakefileParse
 
 main :: IO ()
 main = do
+  result <- nixStoreAdd "example/Makefile"
+  print result
+
+  result2 <- nixDerivationAdd exampleDrv
+  print result2
+
   makefile <- T.readFile "example/Makefile"
   print makefile
   let moduleLines0 = catMaybes $ MakefileParse.parseModuleLine <$> T.lines makefile
@@ -72,6 +82,14 @@ exampleDrv = Derivation
 
 nixStoreAdd :: FilePath -> IO (Either InvalidPathError StorePath)
 nixStoreAdd fp = do
-  str <- readProcess "nix-store" ["--add", fp] ""
-  pure $ parsePathFromText def $ T.pack str
+  str <- readProcess "nix-store" (localStoreArgs <> ["--add", fp]) ""
+  pure $ parsePathFromText def $ T.strip $ T.pack str
 
+nixDerivationAdd :: Derivation -> IO (Either InvalidPathError StorePath)
+nixDerivationAdd drv = do
+  let drvJson = T.decodeUtf8 $ BSL.toStrict $ Aeson.encode drv
+  str <- readProcess "nix" (localStoreArgs <> [ "derivation", "add"]) $ T.unpack drvJson
+  pure $ parsePathFromText def $ T.strip $ T.pack str
+
+localStoreArgs :: [String]
+localStoreArgs = ["--store", "/tmp/sand", "--extra-experimental-features", "ca-derivations"]

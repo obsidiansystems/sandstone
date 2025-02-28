@@ -27,6 +27,8 @@ executable sandstone
 
   build-depends:
     base ^>=4.18.2.1,
+    aeson,
+    bytestring,
     data-default,
     validation,
     hnix-store-core,
