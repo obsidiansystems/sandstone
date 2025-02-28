@@ -6,6 +6,7 @@ import Data.Map qualified as Map
 import Data.Maybe (catMaybes)
 import Data.Set qualified as Set
 import Data.Some
+import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Data.Validation
@@ -38,6 +39,13 @@ main = do
   let (graph, _) = graphFromEdges' $ fmap (\(node, edges') -> (node, node, edges')) nodes
   print graph
 
+objectPlaceholder, interfacePlaceholder :: Text
+
+-- | For the output called "object" of the derivation that uses this placeholder
+objectPlaceholder = "/07fvp8gkd5mhhfi1lqjfwq7sxnpmdfczz27lizfxiz6fpwad8sy4"
+
+-- | For the output called "interface" of the derivation that uses this placeholder
+interfacePlaceholder = "/1ang7n5l91vn079693l42ahmcxgf34r0qad1l01y4lf7d3cwm5lg"
 
 exampleDrv :: Derivation
 exampleDrv = Derivation
