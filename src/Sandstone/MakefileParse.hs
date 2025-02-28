@@ -1,16 +1,17 @@
-module Sandstone.ParseMakefile where
+module Sandstone.MakefileParse where
 
 import Control.Monad
+import Data.Bifunctor
+import Data.Foldable
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NEL
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Foldable
 import Data.Validation
-import System.Nix.StorePath
 import System.Nix.Derivation
+import System.Nix.StorePath
 
-import Sandstone.Graph
+import Sandstone.MakefileGraph
 
 parseModuleLine :: Text -> Maybe ((ModuleName, Text), (ModuleName, Text))
 parseModuleLine line = do
@@ -26,11 +27,17 @@ parseModuleLine line = do
     moduleName <- NEL.nonEmpty $ T.splitOn "/" path
     pure (moduleName, ext)
 
+type ErrorForest = NonEmpty ErrorTree
+
 data ErrorTree
   = Error Text
   | Context Text (NonEmpty ErrorTree)
+  deriving (Eq, Ord, Show, Read)
 
-recordNode :: ((ModuleName, Text), (ModuleName, Text)) -> Validation (NonEmpty Text) (Node, [Node])
+addErrorContext :: Text -> Validation ErrorForest a -> Validation ErrorForest a
+addErrorContext ctx = first $ NEL.singleton . Context ctx
+
+recordNode :: ((ModuleName, Text), (ModuleName, Text)) -> Validation ErrorForest (Node, [Node])
 recordNode ((targetModuleName, eT), (depModuleName, eD)) =
   ((,) <$> targetExt eT <*> depExt eD) `bindValidation` \(f, g) ->
     let
@@ -40,7 +47,7 @@ recordNode ((targetModuleName, eT), (depModuleName, eD)) =
         Nothing ->
           if targetModuleName == depModuleName
           then pure []
-          else Failure $ NEL.singleton $ T.unwords
+          else Failure $ NEL.singleton $ Error $ T.unwords
             [ "Source file and object file's module names did not match:"
             , T.intercalate "." $ toList targetModuleName
             , T.intercalate "." $ toList depModuleName
@@ -55,7 +62,7 @@ recordNode ((targetModuleName, eT), (depModuleName, eD)) =
       ".o" -> Success Node_Compile
       ".o-boot" -> Success Node_PreCompile
       -- error case
-      x -> Failure $ NEL.singleton $ T.unwords ["Unrecoginized extension", x, "for target"]
+      x -> Failure $ NEL.singleton $ Error $ T.unwords ["Unrecoginized extension", x, "for target"]
 
     depExt = \case
       -- source file dep case
@@ -65,4 +72,4 @@ recordNode ((targetModuleName, eT), (depModuleName, eD)) =
       ".hi" -> Success $ Just $ Node_Compile
       ".hi-boot" -> Success $ Just $ Node_PreCompile
       -- error case
-      x -> Failure $ NEL.singleton $ T.unwords ["Unrecoginized extension", x, "for dependency"]
+      x -> Failure $ NEL.singleton $ Error $ T.unwords ["Unrecoginized extension", x, "for dependency"]
