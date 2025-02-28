@@ -71,9 +71,13 @@ writeDerivation memo node deps = case node of
           $ SingleDerivedPath_Opaque source
           : (flip SingleDerivedPath_Built (OutputName $ bad "interface") . SingleDerivedPath_Opaque <$> deps')
       , platform = "x86_64-linux"
-      , builder = "echo"
-      , args = V.fromList ["-c", "set -xeu; echo" <> "" <> " >> $object ;" ]
-      , env = Map.empty
+      , builder = "/bin/sh"
+      , args = V.fromList 
+          ["-c", "set -xeu; echo $PATH >> $interface ; echo " <> "$PATH" <> " >> $object ;"]
+      , env = Map.fromList
+          [ ("object", objectPlaceholder)
+          , ("interface", interfacePlaceholder)
+          ]
       }
     print result2
     pure result2
