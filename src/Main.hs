@@ -6,6 +6,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Data.Validation
 
+import Sandstone.Error
 import Sandstone.MakefileParse qualified as MakefileParse
 
 main :: IO ()
@@ -16,7 +17,7 @@ main = do
   mapM_ print moduleLines0
   nodes <- case
       traverse
-       (\line -> MakefileParse.addErrorContext
+       (\line -> addErrorContext
          ("While recording node for Makefile line: " <> T.pack (show line))
          $ MakefileParse.recordNode line)
        moduleLines0
@@ -24,6 +25,6 @@ main = do
       Failure e -> fail $ show e
       Success a -> pure a
   pure ()
-  let (graph, _) = graphFromEdges' $ fmap (\(node, edges) -> (node, node, edges)) nodes
+  let (graph, _) = graphFromEdges' $ fmap (\(node, edges') -> (node, node, edges')) nodes
   print graph
 

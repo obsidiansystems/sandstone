@@ -1,7 +1,6 @@
 {-# LANGUAGE NoFieldSelectors #-}
 module Sandstone.MakefileGraph where
 
-import Data.Graph
 import Data.Text (Text)
 import Data.List.NonEmpty (NonEmpty)
 

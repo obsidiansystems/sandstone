@@ -1,16 +1,13 @@
 module Sandstone.MakefileParse where
 
 import Control.Monad
-import Data.Bifunctor
 import Data.Foldable
-import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NEL
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Validation
-import System.Nix.Derivation
-import System.Nix.StorePath
 
+import Sandstone.Error
 import Sandstone.MakefileGraph
 
 parseModuleLine :: Text -> Maybe ((ModuleName, Text), (ModuleName, Text))
@@ -26,16 +23,6 @@ parseModuleLine line = do
     let (path, ext) = T.breakOn "." file
     moduleName <- NEL.nonEmpty $ T.splitOn "/" path
     pure (moduleName, ext)
-
-type ErrorForest = NonEmpty ErrorTree
-
-data ErrorTree
-  = Error Text
-  | Context Text (NonEmpty ErrorTree)
-  deriving (Eq, Ord, Show, Read)
-
-addErrorContext :: Text -> Validation ErrorForest a -> Validation ErrorForest a
-addErrorContext ctx = first $ NEL.singleton . Context ctx
 
 recordNode :: ((ModuleName, Text), (ModuleName, Text)) -> Validation ErrorForest (Node, [Node])
 recordNode ((targetModuleName, eT), (depModuleName, eD)) =
