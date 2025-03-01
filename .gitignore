@@ -5,6 +5,7 @@ result
 result-*
 *.o
 *.hi
+*.*-boot
 TAGS
 tags
 ctags
