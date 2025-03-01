@@ -1,4 +1,6 @@
-module Sandstone.MakefileParse where
+module Sandstone.MakefileParse
+  ( parseMakefile
+  ) where
 
 import Control.Monad
 import Data.Foldable
@@ -15,6 +17,9 @@ import Data.Graph
 import Sandstone.Error
 import Sandstone.MakefileGraph
 
+-- | Parse an entire makefile of the sort that 'ghc -M' produces.
+--
+-- The result is a graph
 parseMakefile :: Text -> Validation ErrorForest (Graph, Vertex -> (Node, Node, [Node]))
 parseMakefile makefile =
   let
@@ -28,6 +33,7 @@ parseMakefile makefile =
   in
     graphFromEdges' . fmap (\(node, edges') -> (node, node, Set.toList edges')) . Map.toList <$> nodeMap
 
+-- | Semi-parse a single line of such a makefile
 parseModuleLine :: Text -> Maybe ((ModuleName, Text), (ModuleName, Text))
 parseModuleLine line = do
   guard $ not $ "#" `T.isPrefixOf` line
@@ -42,6 +48,7 @@ parseModuleLine line = do
     moduleName' <- NEL.nonEmpty $ T.splitOn "/" path'
     pure (moduleName', ext)
 
+-- | Finish parsing a line
 recordNode :: ((ModuleName, Text), (ModuleName, Text)) -> Validation ErrorForest (Node, Set Node)
 recordNode ((targetModuleName, eT), (depModuleName, eD)) =
   ((,) <$> targetExt eT <*> depExt eD) `bindValidation` \(f, g) ->

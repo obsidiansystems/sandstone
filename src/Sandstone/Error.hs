@@ -15,4 +15,3 @@ data ErrorTree
 
 addErrorContext :: Text -> Validation ErrorForest a -> Validation ErrorForest a
 addErrorContext ctx = first $ NEL.singleton . Context ctx
-
