@@ -1,3 +1,9 @@
+<img
+  src="./sandstone-logo.png"
+  alt="picture of a rock of sandstone used as a logo"
+  width="30%"
+/>
+
 # Sandstone
 
 > [!IMPORTANT]
