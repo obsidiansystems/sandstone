@@ -45,10 +45,14 @@ main = do
 
   Right ghcDrvPath <- nixIntantiateInDepNixpkgs "ghc"
   Right coreutilsDrvPath <- nixIntantiateInDepNixpkgs "coreutils"
+  Right lndirDrvPath <- nixIntantiateInDepNixpkgs "xorg.lndir"
+
+  putStrLn "done with eval"
 
   let ctx = Ctx
        { ghcDrvPath = SingleDerivedPath_Opaque ghcDrvPath
        , coreutilsDrvPath = SingleDerivedPath_Opaque coreutilsDrvPath
+       , lndirDrvPath = SingleDerivedPath_Opaque lndirDrvPath
        }
 
   memo <- flip execStateT Map.empty $ mapM_ (uncurry $ writeDerivation' ctx) todo
@@ -60,7 +64,8 @@ type DrvMemo = Map Node StorePath
 data Ctx = Ctx
   { ghcDrvPath :: SingleDerivedPath
   , coreutilsDrvPath :: SingleDerivedPath
-  }
+  , lndirDrvPath :: SingleDerivedPath
+  } deriving (Eq, Ord, Show)
 
 writeDerivation' :: Ctx -> Node -> [Node] -> StateT DrvMemo IO ()
 writeDerivation' ctx node deps = do
@@ -82,6 +87,10 @@ writeDerivation ctx memo node deps = case node of
       (T.intercalate "." (NEL.toList $ moduleName module') <> "." <> sourceExt module')
     print source
 
+    putStrLn "==> CTX:"
+    print ctx
+    putStrLn "CTX <=="
+
     Just deps' <- pure $ traverse (flip Map.lookup memo) deps
     putStrLn "==> DEPS:"
     print deps'
@@ -90,6 +99,7 @@ writeDerivation ctx memo node deps = case node of
 
     let ghcPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (ghcDrvPath ctx) (OutputName $ bad "out")
     let coreutilsPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (coreutilsDrvPath ctx) (OutputName $ bad "out")
+    let lndirPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (lndirDrvPath ctx) (OutputName $ bad "out")
 
     Right result2 <- nixDerivationAdd $ Derivation
       { name = bad $ "compile-" <> T.intercalate "." (NEL.toList $ moduleName module')
@@ -99,6 +109,7 @@ writeDerivation ctx memo node deps = case node of
           $ SingleDerivedPath_Opaque source
           : SingleDerivedPath_Built (ghcDrvPath ctx) (OutputName $ bad "out")
           : SingleDerivedPath_Built (coreutilsDrvPath ctx) (OutputName $ bad "out")
+          : SingleDerivedPath_Built (lndirDrvPath ctx) (OutputName $ bad "out")
           : (flip SingleDerivedPath_Built interface . SingleDerivedPath_Opaque <$> deps')
       , platform = "x86_64-linux"
       , builder = "/bin/sh"
@@ -107,22 +118,29 @@ writeDerivation ctx memo node deps = case node of
          interfacePath = "$interface/" <> T.intercalate "/" (NEL.toList $ moduleName module') <> "." <> interfaceExt module'
         in V.fromList
           [ "-c"
-          , T.intercalate ";"
+          , T.intercalate ";" $
             [ "set -xeu"
             , "echo $PATH"
             , "mkdir -p $(dirname " <> objectPath <> ")"
             , "mkdir -p $(dirname " <> interfacePath <> ")"
-            , T.intercalate " " $
+            ]
+            <>
+            fmap
+              (\d -> T.unwords
+                [ lndirPlaceholder <> "/bin/lndir"
+                , renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (SingleDerivedPath_Opaque d) (OutputName $ bad "interface")
+                , "$interface"
+                ])
+              deps'
+            <>
+            [ T.unwords $
               [ ghcPlaceholder <> "/bin/ghc"
               , "-c"
               , storePathToText storeDir source
               , "-o", objectPath
               , "-ohi", interfacePath
-              , "-v"
+              , "-hidir $interface"
               ]
-              <> concatMap
-                (\d -> ["-hidir", renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (SingleDerivedPath_Opaque d) (OutputName $ bad "interface")])
-                deps'
             ]
           ]
       , env = Map.fromList
