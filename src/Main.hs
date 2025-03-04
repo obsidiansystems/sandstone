@@ -63,9 +63,11 @@ main = do
        , lndirDrvPath = SingleDerivedPath_Opaque lndirDrvPath
        }
 
-  memo <- flip execStateT Map.empty $ mapM_ (uncurry $ writeDerivation' T.putStrLn ops ctx) todo
+  memo <- flip execStateT Map.empty $ mapM_ (uncurry $ writeCompilationDerivation' T.putStrLn ops ctx) todo
 
-  nixStoreRealise $ (memo Map.!) $ (\(a, _, _) -> a) $ lookupVertex $ Prelude.head $ topSort graph
+  finalDrv <- writeLinkDerivation T.putStrLn ops ctx memo $ (\(a, _, _) -> a) . lookupVertex <$> vertices graph
+
+  nixStoreRealise finalDrv
 
 type DrvMemo = Map Module StorePath
 
@@ -80,7 +82,7 @@ data PathCtx = PathCtx
   , lndirDrvPath :: SingleDerivedPath
   } deriving (Eq, Ord, Show)
 
-writeDerivation'
+writeCompilationDerivation'
   :: MonadFail m
   => (Text -> m ())
   -> StoreOperations m
@@ -88,16 +90,17 @@ writeDerivation'
   -> Module
   -> [Module]
   -> StateT DrvMemo m ()
-writeDerivation' log ops ctx node deps = do
+writeCompilationDerivation' log ops ctx node deps = do
   memo <- get
-  drvPath <- lift $ writeDerivation log ops ctx memo node deps
+  drvPath <- lift $ writeCompilationDerivation log ops ctx memo node deps
   modify $ Map.insert node drvPath
 
-interface, object :: OutputName
+out, interface, object :: OutputName
+out = OutputName $ bad "out"
 object = OutputName $ bad "object"
 interface = OutputName $ bad "interface"
 
-writeDerivation
+writeCompilationDerivation
   :: forall m
   .  MonadFail m
   => (Text -> m ())
@@ -107,8 +110,7 @@ writeDerivation
   -> Module
   -> [Module]
   -> m StorePath
-writeDerivation log ops ctx memo node deps = case node of
-  module' -> do
+writeCompilationDerivation log ops ctx memo module' deps = do
     let print' :: Show a => a -> m ()
         print' = log . T.pack . show
 
@@ -129,9 +131,9 @@ writeDerivation log ops ctx memo node deps = case node of
     log "DEPS <=="
 
 
-    let ghcPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (ghcDrvPath ctx) (OutputName $ bad "out")
-    let coreutilsPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (coreutilsDrvPath ctx) (OutputName $ bad "out")
-    let lndirPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (lndirDrvPath ctx) (OutputName $ bad "out")
+    let ghcPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (ghcDrvPath ctx) out
+    let coreutilsPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (coreutilsDrvPath ctx) out
+    let lndirPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (lndirDrvPath ctx) out
 
     Right result2 <- insertDerivation ops $ Derivation
       { name = bad $ "compile-" <> T.intercalate "." (NEL.toList $ moduleName module')
@@ -139,9 +141,9 @@ writeDerivation log ops ctx memo node deps = case node of
       , inputs = foldMap
           derivationInputsFromSingleDerivedPath
           $ SingleDerivedPath_Opaque source
-          : SingleDerivedPath_Built (ghcDrvPath ctx) (OutputName $ bad "out")
-          : SingleDerivedPath_Built (coreutilsDrvPath ctx) (OutputName $ bad "out")
-          : SingleDerivedPath_Built (lndirDrvPath ctx) (OutputName $ bad "out")
+          : SingleDerivedPath_Built (ghcDrvPath ctx) out
+          : SingleDerivedPath_Built (coreutilsDrvPath ctx) out
+          : SingleDerivedPath_Built (lndirDrvPath ctx) out
           : (flip SingleDerivedPath_Built interface . SingleDerivedPath_Opaque <$> deps')
       , platform = "x86_64-linux"
       , builder = "/bin/sh"
@@ -160,7 +162,7 @@ writeDerivation log ops ctx memo node deps = case node of
             fmap
               (\d -> T.unwords
                 [ lndirPlaceholder <> "/bin/lndir"
-                , renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (SingleDerivedPath_Opaque d) (OutputName $ bad "interface")
+                , renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (SingleDerivedPath_Opaque d) interface
                 , "$interface"
                 ])
               deps'
@@ -183,7 +185,67 @@ writeDerivation log ops ctx memo node deps = case node of
       }
     print' result2
     pure result2
-  --Module_Link -> fail "not yet implemented"
+
+writeLinkDerivation
+  :: forall m
+  .  MonadFail m
+  => (Text -> m ())
+  -> StoreOperations m
+  -> PathCtx
+  -> DrvMemo
+  -> [Module]
+  -> m StorePath
+writeLinkDerivation log ops ctx memo deps = do
+    let print' :: Show a => a -> m ()
+        print' = log . T.pack . show
+
+    log "==> CTX:"
+    print' ctx
+    log "CTX <=="
+
+    Just deps' <- pure $ traverse (flip Map.lookup memo) deps
+    log "==> DEPS:"
+    print' deps'
+    log "DEPS <=="
+
+
+    let ghcPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (ghcDrvPath ctx) out
+    let coreutilsPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (coreutilsDrvPath ctx) out
+
+    Right result2 <- insertDerivation ops $ Derivation
+      { name = bad $ "link"
+      , outputs = outputsFromList [out]
+      , inputs = foldMap
+          derivationInputsFromSingleDerivedPath
+          $ SingleDerivedPath_Built (ghcDrvPath ctx) out
+          : SingleDerivedPath_Built (coreutilsDrvPath ctx) out
+          : (flip SingleDerivedPath_Built object . SingleDerivedPath_Opaque <$> deps')
+      , platform = "x86_64-linux"
+      , builder = "/bin/sh"
+      , args = V.fromList
+          [ "-c"
+          , T.intercalate ";" $
+            [ "set -xeu"
+            , "echo $PATH"
+            , T.unwords $
+              [ ghcPlaceholder <> "/bin/ghc"
+              , "-o", "$out"
+              ]
+              <> [ renderDownstreamPlaceholder (downstreamPlaceholderFromSingleDerivedPathBuilt (SingleDerivedPath_Opaque d) object) <> "/" <> T.intercalate "/" (NEL.toList $ moduleName dep) <> "." <> objectExt dep
+                 | dep <- deps
+                 -- Skip .o-boot files, which are empty
+                 , not $ hsBoot dep
+                 , Just d <- pure $ Map.lookup dep memo
+                 ]
+            ]
+          ]
+      , env = Map.fromList
+          [ ("out", renderPlaceholder $ createPlaceholder out)
+          , ("PATH", coreutilsPlaceholder <> "/bin")
+          ]
+      }
+    print' result2
+    pure result2
 
 caOutputSpec :: ContentAddressedDerivationOutput
 caOutputSpec = ContentAddressedDerivationOutput
