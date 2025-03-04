@@ -35,6 +35,7 @@ main = do
   _ghcStorePath <- setupDemoStore
 
   Right ghcDrvPath <- nixIntantiateInDepNixpkgs "ghc"
+  Right bashDrvPath <- nixIntantiateInDepNixpkgs "bash"
   Right coreutilsDrvPath <- nixIntantiateInDepNixpkgs "coreutils"
   Right lndirDrvPath <- nixIntantiateInDepNixpkgs "xorg.lndir"
 
@@ -59,6 +60,7 @@ main = do
 
   let ctx = PathCtx
        { ghcDrvPath = SingleDerivedPath_Opaque ghcDrvPath
+       , bashDrvPath = SingleDerivedPath_Opaque bashDrvPath
        , coreutilsDrvPath = SingleDerivedPath_Opaque coreutilsDrvPath
        , lndirDrvPath = SingleDerivedPath_Opaque lndirDrvPath
        }
@@ -78,6 +80,7 @@ data StoreOperations m = StoreOperations
 
 data PathCtx = PathCtx
   { ghcDrvPath :: SingleDerivedPath
+  , bashDrvPath :: SingleDerivedPath
   , coreutilsDrvPath :: SingleDerivedPath
   , lndirDrvPath :: SingleDerivedPath
   } deriving (Eq, Ord, Show)
@@ -132,6 +135,7 @@ writeCompilationDerivation log ops ctx memo module' deps = do
 
 
     let ghcPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (ghcDrvPath ctx) out
+    let bashPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (bashDrvPath ctx) out
     let coreutilsPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (coreutilsDrvPath ctx) out
     let lndirPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (lndirDrvPath ctx) out
 
@@ -142,11 +146,12 @@ writeCompilationDerivation log ops ctx memo module' deps = do
           derivationInputsFromSingleDerivedPath
           $ SingleDerivedPath_Opaque source
           : SingleDerivedPath_Built (ghcDrvPath ctx) out
+          : SingleDerivedPath_Built (bashDrvPath ctx) out
           : SingleDerivedPath_Built (coreutilsDrvPath ctx) out
           : SingleDerivedPath_Built (lndirDrvPath ctx) out
           : (flip SingleDerivedPath_Built interface . SingleDerivedPath_Opaque <$> deps')
       , platform = "x86_64-linux"
-      , builder = "/bin/sh"
+      , builder = bashPlaceholder <> "/bin/bash"
       , args = let
          objectPath = "$object/" <> T.intercalate "/" (NEL.toList $ moduleName module') <> "." <> objectExt module'
          interfacePath = "$interface/" <> T.intercalate "/" (NEL.toList $ moduleName module') <> "." <> interfaceExt module'
@@ -210,6 +215,7 @@ writeLinkDerivation log ops ctx memo deps = do
 
 
     let ghcPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (ghcDrvPath ctx) out
+    let bashPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (bashDrvPath ctx) out
     let coreutilsPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (coreutilsDrvPath ctx) out
 
     Right result2 <- insertDerivation ops $ Derivation
@@ -218,10 +224,11 @@ writeLinkDerivation log ops ctx memo deps = do
       , inputs = foldMap
           derivationInputsFromSingleDerivedPath
           $ SingleDerivedPath_Built (ghcDrvPath ctx) out
+          : SingleDerivedPath_Built (bashDrvPath ctx) out
           : SingleDerivedPath_Built (coreutilsDrvPath ctx) out
           : (flip SingleDerivedPath_Built object . SingleDerivedPath_Opaque <$> deps')
       , platform = "x86_64-linux"
-      , builder = "/bin/sh"
+      , builder = bashPlaceholder <> "/bin/bash"
       , args = V.fromList
           [ "-c"
           , T.intercalate ";" $
