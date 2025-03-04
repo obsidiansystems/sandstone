@@ -67,7 +67,7 @@ main = do
 
   nixStoreRealise $ (memo Map.!) $ (\(a, _, _) -> a) $ lookupVertex $ Prelude.head $ topSort graph
 
-type DrvMemo = Map Node StorePath
+type DrvMemo = Map Module StorePath
 
 data StoreOperations m = StoreOperations
   { insertDerivation :: Derivation -> m (Either InvalidPathError StorePath)
@@ -85,8 +85,8 @@ writeDerivation'
   => (Text -> m ())
   -> StoreOperations m
   -> PathCtx
-  -> Node
-  -> [Node]
+  -> Module
+  -> [Module]
   -> StateT DrvMemo m ()
 writeDerivation' log ops ctx node deps = do
   memo <- get
@@ -104,11 +104,11 @@ writeDerivation
   -> StoreOperations m
   -> PathCtx
   -> DrvMemo
-  -> Node
-  -> [Node]
+  -> Module
+  -> [Module]
   -> m StorePath
 writeDerivation log ops ctx memo node deps = case node of
-  Node_Compile module' -> do
+  module' -> do
     let print' :: Show a => a -> m ()
         print' = log . T.pack . show
 
@@ -183,7 +183,7 @@ writeDerivation log ops ctx memo node deps = case node of
       }
     print' result2
     pure result2
-  Node_Link -> fail "not yet implemented"
+  --Module_Link -> fail "not yet implemented"
 
 caOutputSpec :: ContentAddressedDerivationOutput
 caOutputSpec = ContentAddressedDerivationOutput

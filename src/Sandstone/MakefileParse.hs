@@ -20,14 +20,14 @@ import Sandstone.MakefileGraph
 -- | Parse an entire makefile of the sort that 'ghc -M' produces.
 --
 -- The result is a graph
-parseMakefile :: Text -> Validation ErrorForest (Graph, Vertex -> (Node, Node, [Node]))
+parseMakefile :: Text -> Validation ErrorForest (Graph, Vertex -> (Module, Module, [Module]))
 parseMakefile makefile =
   let
     moduleLines0 = catMaybes $ parseModuleLine <$> T.lines makefile
     moduleLines1 = traverse
       (\line -> addErrorContext
         ("While recording node for Makefile line: " <> T.pack (show line))
-        $ recordNode line)
+        $ recordModule line)
       moduleLines0
     nodeMap = Map.fromListWith (<>) <$> moduleLines1
   in
@@ -49,8 +49,8 @@ parseModuleLine line = do
     pure (moduleName', ext)
 
 -- | Finish parsing a line
-recordNode :: ((ModuleName, Text), (ModuleName, Text)) -> Validation ErrorForest (Node, Set Node)
-recordNode ((targetModuleName, eT), (depModuleName, eD)) =
+recordModule :: ((ModuleName, Text), (ModuleName, Text)) -> Validation ErrorForest (Module, Set Module)
+recordModule ((targetModuleName, eT), (depModuleName, eD)) =
   ((,) <$> targetExt eT <*> depExt eD) `bindValidation` \(f, g) ->
     let
       deps = case g of
@@ -71,8 +71,8 @@ recordNode ((targetModuleName, eT), (depModuleName, eD)) =
   where
     targetExt = \case
       -- object file cases
-      ".o" -> Success $ Node_Compile . Module False
-      ".o-boot" -> Success $ Node_Compile . Module True
+      ".o" -> Success $ Module False
+      ".o-boot" -> Success $ Module True
       -- error case
       x -> Failure $ NEL.singleton $ Error $ T.unwords ["Unrecoginized extension", x, "for target"]
 
@@ -81,7 +81,7 @@ recordNode ((targetModuleName, eT), (depModuleName, eD)) =
       ".hs" -> Success Nothing
       ".hs-boot" -> Success Nothing
       -- interface file dep cases
-      ".hi" -> Success $ Just $ Node_Compile . Module False
-      ".hi-boot" -> Success $ Just $ Node_Compile . Module True
+      ".hi" -> Success $ Just $ Module False
+      ".hi-boot" -> Success $ Just $ Module True
       -- error case
       x -> Failure $ NEL.singleton $ Error $ T.unwords ["Unrecoginized extension", x, "for dependency"]
