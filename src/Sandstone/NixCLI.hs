@@ -13,7 +13,6 @@ import Data.Default
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as T
-import System.Directory (withCurrentDirectory)
 import System.Nix.Derivation
 import System.Nix.JSON ()
 import System.Nix.StorePath
@@ -30,7 +29,7 @@ nixStoreAdd fp name = do
 
 nixStoreRealise :: StorePath -> IO ()
 nixStoreRealise fp =
-  callProcess "nix" (localStoreArgs <> ["build", "-L", T.unpack $ storePathToText storeDir fp <> "^*", "-v"])
+  callProcess "nix" $ localStoreArgs <> ["build", "-L", T.unpack $ storePathToText storeDir fp <> "^*", "-v"]
 
 nixDerivationAdd :: Derivation -> IO (Either InvalidPathError StorePath)
 nixDerivationAdd drv = do
@@ -54,15 +53,10 @@ ghcGenerateMakefile ghcStorePath = do
   let ghcBinPath = T.unpack $ storePathToText storeDir ghcStorePath <> "/bin/ghc"
   callCommand $ ghcBinPath <> " -M *.hs"
 
-setupDemoStore :: IO ()
+setupDemoStore :: IO StorePath
 setupDemoStore = do
   Right ghcStorePath <- nixBuildInDepNixpkgs "ghc"
-  nixCopyTo (localStore storePath) ghcStorePath
-  withCurrentDirectory "./example" $
-    ghcGenerateMakefile ghcStorePath
-  pure ()
- where
-  localStore = ("local?root=" <>)
+  pure ghcStorePath
 
 nixIntantiateInDepNixpkgs :: String -> IO (Either InvalidPathError StorePath)
 nixIntantiateInDepNixpkgs attr = do
@@ -71,11 +65,9 @@ nixIntantiateInDepNixpkgs attr = do
 
 nixBuildInDepNixpkgs :: String -> IO (Either InvalidPathError StorePath)
 nixBuildInDepNixpkgs attr = do
-  str <- readProcess "nix-build" ["./dep/nixpkgs", "-A", attr] ""
+  str <- readProcess "nix-build" (localStoreArgs <> ["./dep/nixpkgs", "-A", attr]) ""
   pure $ parsePathFromText storeDir $ T.strip $ T.pack str
 
-nixCopyTo :: FilePath -> StorePath -> IO ()
-nixCopyTo store sp = do
-  str <- readProcess "nix" ["copy", "--no-check-sigs", "--to", store, T.unpack $ storePathToText storeDir sp] ""
-  print str
-  pure ()
+nixRunInDepNixpkgs :: String -> [String] -> IO ()
+nixRunInDepNixpkgs attr args =
+  callProcess "nix" $ localStoreArgs <> ["run", "--file", "../dep/nixpkgs", attr, "--"] <> args
