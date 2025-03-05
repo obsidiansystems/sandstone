@@ -21,7 +21,12 @@ executable sandstone
 
   main-is:          Main.hs
 
-  -- other-modules:
+  other-modules:
+    Sandstone.Error
+    Sandstone.GhcMakefile.Graph
+    Sandstone.GhcMakefile.Parse
+    Sandstone.NixCLI
+    Sandstone.WriteDerivation
 
   -- other-extensions:
 
