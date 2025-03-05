@@ -33,10 +33,10 @@ data StoreOperations m = StoreOperations
   }
 
 data PathCtx = PathCtx
-  { ghcDrvPath :: SingleDerivedPath
-  , bashDrvPath :: SingleDerivedPath
-  , coreutilsDrvPath :: SingleDerivedPath
-  , lndirDrvPath :: SingleDerivedPath
+  { ghcPath :: SingleDerivedPath
+  , bashPath :: SingleDerivedPath
+  , coreutilsPath :: SingleDerivedPath
+  , lndirPath :: SingleDerivedPath
   } deriving (Eq, Ord, Show)
 
 writeBothDerivations
@@ -45,12 +45,13 @@ writeBothDerivations
   -> StoreDir
   -> StoreOperations m
   -> PathCtx
+  -> FilePath
   -> Graph
   -> (Vertex -> (Module, b, [Module]))
   -> m StorePath
-writeBothDerivations log storeDir ops ctx graph lookupVertex = do
+writeBothDerivations log storeDir ops ctx sourceRoot graph lookupVertex = do
   let todo = fmap ((\(a, _, b) -> (a, b)) . lookupVertex) $ reverseTopSort graph
-  memo <- flip execStateT Map.empty $ mapM_ (uncurry $ writeCompilationDerivation' log storeDir ops ctx) todo
+  memo <- flip execStateT Map.empty $ mapM_ (uncurry $ writeCompilationDerivation' log storeDir ops ctx sourceRoot) todo
   writeLinkDerivation log storeDir ops ctx memo $ (\(a, _, _) -> a) . lookupVertex <$> vertices graph
 
 writeCompilationDerivation'
@@ -59,12 +60,13 @@ writeCompilationDerivation'
   -> StoreDir
   -> StoreOperations m
   -> PathCtx
+  -> FilePath
   -> Module
   -> [Module]
   -> StateT DrvMemo m ()
-writeCompilationDerivation' log storeDir ops ctx node deps = do
+writeCompilationDerivation' log storeDir ops ctx sourceRoot node deps = do
   memo <- get
-  drvPath <- lift $ writeCompilationDerivation log storeDir ops ctx memo node deps
+  drvPath <- lift $ writeCompilationDerivation log storeDir ops ctx sourceRoot memo node deps
   modify $ Map.insert node drvPath
 
 out, interface, object :: OutputName
@@ -79,18 +81,19 @@ writeCompilationDerivation
   -> StoreDir
   -> StoreOperations m
   -> PathCtx
+  -> FilePath
   -> DrvMemo
   -> Module
   -> [Module]
   -> m StorePath
-writeCompilationDerivation log storeDir ops ctx memo module' deps = do
+writeCompilationDerivation log storeDir ops ctx sourceRoot memo module' deps = do
     let print' :: Show a => a -> m ()
         print' = log . T.pack . show
 
     print' module'
 
     Right source <- insertFileFromPath ops
-      ("example/" <> pathNoExt module' <> "." <> T.unpack (sourceExt module'))
+      (sourceRoot <> "/" <> pathNoExt module' <> "." <> T.unpack (sourceExt module'))
       (T.intercalate "." (NEL.toList $ moduleName module') <> "." <> sourceExt module')
     print' source
 
@@ -104,10 +107,10 @@ writeCompilationDerivation log storeDir ops ctx memo module' deps = do
     log "DEPS <=="
 
 
-    let ghcPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (ghcDrvPath ctx)
-    let bashPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (bashDrvPath ctx)
-    let coreutilsPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (coreutilsDrvPath ctx)
-    let lndirPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (lndirDrvPath ctx)
+    let ghcPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (ghcPath ctx)
+    let bashPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (bashPath ctx)
+    let coreutilsPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (coreutilsPath ctx)
+    let lndirPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (lndirPath ctx)
 
     Right result2 <- insertDerivation ops $ Derivation
       { name = bad $ "compile-" <> T.intercalate "." (NEL.toList $ moduleName module')
@@ -115,10 +118,10 @@ writeCompilationDerivation log storeDir ops ctx memo module' deps = do
       , inputs = foldMap
           derivationInputsFromSingleDerivedPath
           $ SingleDerivedPath_Opaque source
-          : ghcDrvPath ctx
-          : bashDrvPath ctx
-          : coreutilsDrvPath ctx
-          : lndirDrvPath ctx
+          : ghcPath ctx
+          : bashPath ctx
+          : coreutilsPath ctx
+          : lndirPath ctx
           : (flip SingleDerivedPath_Built interface . SingleDerivedPath_Opaque <$> deps')
       , platform = "x86_64-linux"
       , builder = bashPlaceholder <> "/bin/bash"
@@ -186,18 +189,18 @@ writeLinkDerivation log storeDir ops ctx memo deps = do
     log "DEPS <=="
 
 
-    let ghcPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (ghcDrvPath ctx)
-    let bashPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (bashDrvPath ctx)
-    let coreutilsPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (coreutilsDrvPath ctx)
+    let ghcPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (ghcPath ctx)
+    let bashPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (bashPath ctx)
+    let coreutilsPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (coreutilsPath ctx)
 
     Right result2 <- insertDerivation ops $ Derivation
       { name = bad $ "link"
       , outputs = outputsFromList [out]
       , inputs = foldMap
           derivationInputsFromSingleDerivedPath
-          $ ghcDrvPath ctx
-          : bashDrvPath ctx
-          : coreutilsDrvPath ctx
+          $ ghcPath ctx
+          : bashPath ctx
+          : coreutilsPath ctx
           : (flip SingleDerivedPath_Built object . SingleDerivedPath_Opaque <$> deps')
       , platform = "x86_64-linux"
       , builder = bashPlaceholder <> "/bin/bash"

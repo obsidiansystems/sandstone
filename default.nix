@@ -42,6 +42,34 @@ rec {
       });
   };
 
+  dyn-drvs-test = pkgs.stdenv.mkDerivation {
+    name = "sandstone-dyn-drvs-on-example.drv";
+
+    ghc = pkgs.ghc.outPath;
+
+    nativeBuildInputs = [ pkgs.nix ];
+
+    # TODO should use ^
+    bash = "${builtins.unsafeDiscardOutputDependency pkgs.bash.drvPath}!out";
+    coreutils = "${builtins.unsafeDiscardOutputDependency pkgs.coreutils.drvPath}!out";
+    lndir = "${builtins.unsafeDiscardOutputDependency pkgs.xorg.lndir.drvPath}!out";
+
+    sources = ./example;
+
+    buildCommand = ''
+      export NIX_CONFIG='extra-experimental-features = nix-command ca-derivations dynamic-derivations'
+      ${haskellPackages.sandstone}/bin/demo-dyn-drv
+    '';
+
+    requiredSystemFeatures = [ "recursive-nix" ];
+
+    __contentAddressed = true;
+    outputHashMode = "text";
+    outputHashAlgo = "sha256";
+  };
+
+  dyn-drvs-test-res = builtins.outputOf dyn-drvs-test.outPath "out";
+
   # Until a version of Nix is shipped with dynamic derivations working,
   # we'll take a version from master.
   nix = pkgs.nix;

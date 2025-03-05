@@ -61,6 +61,8 @@ common common
     UndecidableInstances
     ViewPatterns
 
+  -- other-extensions:
+
 library
   import:           common
 
@@ -93,7 +95,22 @@ executable demo-ca
 
   main-is:          demo-ca.hs
 
-  -- other-extensions:
+  build-depends:
+    base,
+    directory,
+    hnix-store-core,
+    sandstone,
+    text,
+    validation,
+
+  hs-source-dirs: src-bin
+
+  default-language: Haskell2010
+
+executable demo-dyn-drv
+  import:           common
+
+  main-is:          demo-dyn-drv.hs
 
   build-depends:
     base,
@@ -102,6 +119,7 @@ executable demo-ca
     sandstone,
     text,
     validation,
+    process,
 
   hs-source-dirs: src-bin
 

@@ -24,10 +24,10 @@ main :: IO ()
 main = do
   _ghcStorePath <- setupDemoStore localStoreArgs
 
-  Right ghcDrvPath <- nixIntantiateInDepNixpkgs localStoreArgs "ghc"
-  Right bashDrvPath <- nixIntantiateInDepNixpkgs localStoreArgs "bash"
-  Right coreutilsDrvPath <- nixIntantiateInDepNixpkgs localStoreArgs "coreutils"
-  Right lndirDrvPath <- nixIntantiateInDepNixpkgs localStoreArgs "xorg.lndir"
+  Right ghcPath <- nixIntantiateInDepNixpkgs localStoreArgs "ghc"
+  Right bashPath <- nixIntantiateInDepNixpkgs localStoreArgs "bash"
+  Right coreutilsPath <- nixIntantiateInDepNixpkgs localStoreArgs "coreutils"
+  Right lndirPath <- nixIntantiateInDepNixpkgs localStoreArgs "xorg.lndir"
 
   putStrLn "done with eval"
 
@@ -47,12 +47,12 @@ main = do
        }
 
   let ctx = PathCtx
-       { ghcDrvPath = SingleDerivedPath_Built (SingleDerivedPath_Opaque ghcDrvPath) out
-       , bashDrvPath = SingleDerivedPath_Built (SingleDerivedPath_Opaque bashDrvPath) out
-       , coreutilsDrvPath = SingleDerivedPath_Built (SingleDerivedPath_Opaque coreutilsDrvPath) out
-       , lndirDrvPath = SingleDerivedPath_Built (SingleDerivedPath_Opaque lndirDrvPath) out
+       { ghcPath = SingleDerivedPath_Built (SingleDerivedPath_Opaque ghcPath) out
+       , bashPath = SingleDerivedPath_Built (SingleDerivedPath_Opaque bashPath) out
+       , coreutilsPath = SingleDerivedPath_Built (SingleDerivedPath_Opaque coreutilsPath) out
+       , lndirPath = SingleDerivedPath_Built (SingleDerivedPath_Opaque lndirPath) out
        }
 
-  finalDrv <- writeBothDerivations T.putStrLn storeDir ops ctx graph lookupVertex
+  finalDrv <- writeBothDerivations T.putStrLn storeDir ops ctx "example" graph lookupVertex
 
   nixStoreRealise localStoreArgs finalDrv
