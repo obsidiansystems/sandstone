@@ -40,10 +40,10 @@ main = do
        }
 
   let ctx = PathCtx
-       { ghcDrvPath = SingleDerivedPath_Opaque ghcDrvPath
-       , bashDrvPath = SingleDerivedPath_Opaque bashDrvPath
-       , coreutilsDrvPath = SingleDerivedPath_Opaque coreutilsDrvPath
-       , lndirDrvPath = SingleDerivedPath_Opaque lndirDrvPath
+       { ghcDrvPath = SingleDerivedPath_Built (SingleDerivedPath_Opaque ghcDrvPath) out
+       , bashDrvPath = SingleDerivedPath_Built (SingleDerivedPath_Opaque bashDrvPath) out
+       , coreutilsDrvPath = SingleDerivedPath_Built (SingleDerivedPath_Opaque coreutilsDrvPath) out
+       , lndirDrvPath = SingleDerivedPath_Built (SingleDerivedPath_Opaque lndirDrvPath) out
        }
 
   finalDrv <- writeBothDerivations T.putStrLn storeDir ops ctx graph lookupVertex

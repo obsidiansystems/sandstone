@@ -104,10 +104,10 @@ writeCompilationDerivation log storeDir ops ctx memo module' deps = do
     log "DEPS <=="
 
 
-    let ghcPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (ghcDrvPath ctx) out
-    let bashPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (bashDrvPath ctx) out
-    let coreutilsPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (coreutilsDrvPath ctx) out
-    let lndirPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (lndirDrvPath ctx) out
+    let ghcPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (ghcDrvPath ctx)
+    let bashPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (bashDrvPath ctx)
+    let coreutilsPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (coreutilsDrvPath ctx)
+    let lndirPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (lndirDrvPath ctx)
 
     Right result2 <- insertDerivation ops $ Derivation
       { name = bad $ "compile-" <> T.intercalate "." (NEL.toList $ moduleName module')
@@ -115,10 +115,10 @@ writeCompilationDerivation log storeDir ops ctx memo module' deps = do
       , inputs = foldMap
           derivationInputsFromSingleDerivedPath
           $ SingleDerivedPath_Opaque source
-          : SingleDerivedPath_Built (ghcDrvPath ctx) out
-          : SingleDerivedPath_Built (bashDrvPath ctx) out
-          : SingleDerivedPath_Built (coreutilsDrvPath ctx) out
-          : SingleDerivedPath_Built (lndirDrvPath ctx) out
+          : ghcDrvPath ctx
+          : bashDrvPath ctx
+          : coreutilsDrvPath ctx
+          : lndirDrvPath ctx
           : (flip SingleDerivedPath_Built interface . SingleDerivedPath_Opaque <$> deps')
       , platform = "x86_64-linux"
       , builder = bashPlaceholder <> "/bin/bash"
@@ -137,7 +137,8 @@ writeCompilationDerivation log storeDir ops ctx memo module' deps = do
             fmap
               (\d -> T.unwords
                 [ lndirPlaceholder <> "/bin/lndir"
-                , renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (SingleDerivedPath_Opaque d) interface
+                , pathOrPlaceholderFromSingleDerivedPath storeDir
+                    $ SingleDerivedPath_Built (SingleDerivedPath_Opaque d) interface
                 , "$interface"
                 ])
               deps'
@@ -171,7 +172,7 @@ writeLinkDerivation
   -> DrvMemo
   -> [Module]
   -> m StorePath
-writeLinkDerivation log _storeDir ops ctx memo deps = do
+writeLinkDerivation log storeDir ops ctx memo deps = do
     let print' :: Show a => a -> m ()
         print' = log . T.pack . show
 
@@ -185,18 +186,18 @@ writeLinkDerivation log _storeDir ops ctx memo deps = do
     log "DEPS <=="
 
 
-    let ghcPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (ghcDrvPath ctx) out
-    let bashPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (bashDrvPath ctx) out
-    let coreutilsPlaceholder = renderDownstreamPlaceholder $ downstreamPlaceholderFromSingleDerivedPathBuilt (coreutilsDrvPath ctx) out
+    let ghcPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (ghcDrvPath ctx)
+    let bashPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (bashDrvPath ctx)
+    let coreutilsPlaceholder = pathOrPlaceholderFromSingleDerivedPath storeDir (coreutilsDrvPath ctx)
 
     Right result2 <- insertDerivation ops $ Derivation
       { name = bad $ "link"
       , outputs = outputsFromList [out]
       , inputs = foldMap
           derivationInputsFromSingleDerivedPath
-          $ SingleDerivedPath_Built (ghcDrvPath ctx) out
-          : SingleDerivedPath_Built (bashDrvPath ctx) out
-          : SingleDerivedPath_Built (coreutilsDrvPath ctx) out
+          $ ghcDrvPath ctx
+          : bashDrvPath ctx
+          : coreutilsDrvPath ctx
           : (flip SingleDerivedPath_Built object . SingleDerivedPath_Opaque <$> deps')
       , platform = "x86_64-linux"
       , builder = bashPlaceholder <> "/bin/bash"
