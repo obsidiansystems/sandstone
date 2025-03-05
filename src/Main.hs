@@ -26,8 +26,8 @@ import System.Nix.OutputName
 import System.Nix.Placeholder
 import System.Nix.StorePath
 
-import Sandstone.MakefileGraph
-import Sandstone.MakefileParse
+import Sandstone.GhcMakefile.Graph
+import Sandstone.GhcMakefile.Parse
 import Sandstone.NixCLI
 
 main :: IO ()

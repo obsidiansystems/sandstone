@@ -1,4 +1,4 @@
-module Sandstone.MakefileParse
+module Sandstone.GhcMakefile.Parse
   ( parseMakefile
   ) where
 
@@ -15,7 +15,7 @@ import Data.Validation
 import Data.Graph
 
 import Sandstone.Error
-import Sandstone.MakefileGraph
+import Sandstone.GhcMakefile.Graph
 
 -- | Parse an entire makefile of the sort that 'ghc -M' produces.
 --

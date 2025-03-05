@@ -1,4 +1,4 @@
-module Sandstone.MakefileGraph where
+module Sandstone.GhcMakefile.Graph where
 
 import Data.Foldable
 import Data.Text (Text)
