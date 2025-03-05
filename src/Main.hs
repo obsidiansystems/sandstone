@@ -13,19 +13,27 @@ import Sandstone.GhcMakefile.Parse
 import Sandstone.NixCLI
 import Sandstone.WriteDerivation
 
+localStoreArgs :: [String]
+localStoreArgs =
+  [ "--store", storePath
+  , "--extra-experimental-features", "nix-command ca-derivations"
+  , "--substituters", "http://cache.nixos.org"
+  , "--builders", ""
+  ]
+
 main :: IO ()
 main = do
-  _ghcStorePath <- setupDemoStore
+  _ghcStorePath <- setupDemoStore localStoreArgs
 
-  Right ghcDrvPath <- nixIntantiateInDepNixpkgs "ghc"
-  Right bashDrvPath <- nixIntantiateInDepNixpkgs "bash"
-  Right coreutilsDrvPath <- nixIntantiateInDepNixpkgs "coreutils"
-  Right lndirDrvPath <- nixIntantiateInDepNixpkgs "xorg.lndir"
+  Right ghcDrvPath <- nixIntantiateInDepNixpkgs localStoreArgs "ghc"
+  Right bashDrvPath <- nixIntantiateInDepNixpkgs localStoreArgs "bash"
+  Right coreutilsDrvPath <- nixIntantiateInDepNixpkgs localStoreArgs "coreutils"
+  Right lndirDrvPath <- nixIntantiateInDepNixpkgs localStoreArgs "xorg.lndir"
 
   putStrLn "done with eval"
 
   withCurrentDirectory "./example" $
-    nixRunInDepNixpkgs "ghc" ["-M", "Main.hs"]
+    nixRunInDepNixpkgs localStoreArgs "ghc" ["-M", "Main.hs"]
 
   makefile <- T.readFile "example/Makefile"
   print makefile
@@ -35,8 +43,8 @@ main = do
     Success a -> pure a
 
   let ops = StoreOperations
-       { insertDerivation = nixDerivationAdd
-       , insertFileFromPath = nixStoreAdd
+       { insertDerivation = nixDerivationAdd localStoreArgs
+       , insertFileFromPath = nixStoreAdd localStoreArgs
        }
 
   let ctx = PathCtx
@@ -48,4 +56,4 @@ main = do
 
   finalDrv <- writeBothDerivations T.putStrLn storeDir ops ctx graph lookupVertex
 
-  nixStoreRealise finalDrv
+  nixStoreRealise localStoreArgs finalDrv

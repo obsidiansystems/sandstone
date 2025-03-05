@@ -21,29 +21,21 @@ import System.Process hiding (env)
 storeDir :: StoreDir
 storeDir = def
 
-nixStoreAdd :: FilePath -> Text -> IO (Either InvalidPathError StorePath)
-nixStoreAdd fp name = do
-  str <- readProcess "nix" (localStoreArgs <> ["store", "add", fp, "--name", T.unpack name]) ""
+nixStoreAdd :: [String] -> FilePath -> Text -> IO (Either InvalidPathError StorePath)
+nixStoreAdd extraArgs fp name = do
+  str <- readProcess "nix" (extraArgs <> ["store", "add", fp, "--name", T.unpack name]) ""
   pure $ parsePathFromText storeDir $ T.strip $ T.pack str
 
 
-nixStoreRealise :: StorePath -> IO ()
-nixStoreRealise fp =
-  callProcess "nix" $ localStoreArgs <> ["build", "-L", T.unpack $ storePathToText storeDir fp <> "^*", "-v"]
+nixStoreRealise :: [String] -> StorePath -> IO ()
+nixStoreRealise extraArgs fp =
+  callProcess "nix" $ extraArgs <> ["build", "-L", T.unpack $ storePathToText storeDir fp <> "^*", "-v"]
 
-nixDerivationAdd :: Derivation -> IO (Either InvalidPathError StorePath)
-nixDerivationAdd drv = do
+nixDerivationAdd :: [String] -> Derivation -> IO (Either InvalidPathError StorePath)
+nixDerivationAdd extraArgs drv = do
   let drvJson = T.decodeUtf8 $ BSL.toStrict $ Aeson.encode drv
-  str <- readProcess "nix" (localStoreArgs <> [ "derivation", "add"]) $ T.unpack drvJson
+  str <- readProcess "nix" (extraArgs <> [ "derivation", "add"]) $ T.unpack drvJson
   pure $ parsePathFromText storeDir $ T.strip $ T.pack str
-
-localStoreArgs :: [String]
-localStoreArgs =
-  [ "--store", storePath
-  , "--extra-experimental-features", "nix-command ca-derivations"
-  , "--substituters", "http://cache.nixos.org"
-  , "--builders", ""
-  ]
 
 storePath :: FilePath
 storePath = "/tmp/sand"
@@ -53,21 +45,21 @@ ghcGenerateMakefile ghcStorePath = do
   let ghcBinPath = T.unpack $ storePathToText storeDir ghcStorePath <> "/bin/ghc"
   callCommand $ ghcBinPath <> " -M *.hs"
 
-setupDemoStore :: IO StorePath
-setupDemoStore = do
-  Right ghcStorePath <- nixBuildInDepNixpkgs "ghc"
+setupDemoStore :: [String] -> IO StorePath
+setupDemoStore extraArgs = do
+  Right ghcStorePath <- nixBuildInDepNixpkgs extraArgs "ghc"
   pure ghcStorePath
 
-nixIntantiateInDepNixpkgs :: String -> IO (Either InvalidPathError StorePath)
-nixIntantiateInDepNixpkgs attr = do
-  str <- readProcess "nix-instantiate" (localStoreArgs <> ["./dep/nixpkgs", "-A", attr]) ""
+nixIntantiateInDepNixpkgs :: [String] -> String -> IO (Either InvalidPathError StorePath)
+nixIntantiateInDepNixpkgs extraArgs attr = do
+  str <- readProcess "nix-instantiate" (extraArgs <> ["./dep/nixpkgs", "-A", attr]) ""
   pure $ parsePathFromText storeDir $ T.strip $ T.pack str
 
-nixBuildInDepNixpkgs :: String -> IO (Either InvalidPathError StorePath)
-nixBuildInDepNixpkgs attr = do
-  str <- readProcess "nix-build" (localStoreArgs <> ["./dep/nixpkgs", "-A", attr]) ""
+nixBuildInDepNixpkgs :: [String] -> String -> IO (Either InvalidPathError StorePath)
+nixBuildInDepNixpkgs extraArgs attr = do
+  str <- readProcess "nix-build" (extraArgs <> ["./dep/nixpkgs", "-A", attr]) ""
   pure $ parsePathFromText storeDir $ T.strip $ T.pack str
 
-nixRunInDepNixpkgs :: String -> [String] -> IO ()
-nixRunInDepNixpkgs attr args =
-  callProcess "nix" $ localStoreArgs <> ["run", "--file", "../dep/nixpkgs", attr, "--"] <> args
+nixRunInDepNixpkgs :: [String] -> String -> [String] -> IO ()
+nixRunInDepNixpkgs extraArgs attr args =
+  callProcess "nix" $ extraArgs <> ["run", "--file", "../dep/nixpkgs", attr, "--"] <> args
