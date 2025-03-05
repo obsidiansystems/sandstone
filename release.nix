@@ -17,6 +17,7 @@ lib.genAttrs
       };
     in
     {
+      inherit (proj.haskellPackages) sandstone;
       inherit (proj) nix;
     }
   )

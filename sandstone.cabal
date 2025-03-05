@@ -13,40 +13,8 @@ build-type:         Simple
 extra-doc-files:    CHANGELOG.md
 -- extra-source-files:
 
-common warnings
+common common
   ghc-options: -Wall
-
-executable sandstone
-  import:           warnings
-
-  main-is:          Main.hs
-
-  other-modules:
-    Sandstone.Error
-    Sandstone.GhcMakefile.Graph
-    Sandstone.GhcMakefile.Parse
-    Sandstone.NixCLI
-    Sandstone.WriteDerivation
-
-  -- other-extensions:
-
-  build-depends:
-    aeson,
-    base ^>=4.18.2.1,
-    bytestring,
-    containers,
-    data-default,
-    dependent-sum,
-    directory,
-    hnix-store-core,
-    hnix-store-json,
-    process,
-    text,
-    transformers,
-    validation,
-    vector,
-
-  hs-source-dirs: src
 
   default-extensions:
     AllowAmbiguousTypes
@@ -92,5 +60,59 @@ executable sandstone
     TypeOperators
     UndecidableInstances
     ViewPatterns
+
+library
+  import:           common
+
+  hs-source-dirs: src
+
+  exposed-modules:
+    Sandstone.Error
+    Sandstone.GhcMakefile.Graph
+    Sandstone.GhcMakefile.Parse
+    Sandstone.NixCLI
+    Sandstone.WriteDerivation
+
+  build-depends:
+    aeson,
+    base ^>=4.18.2.1,
+    bytestring,
+    containers,
+    data-default,
+    dependent-sum,
+    directory,
+    hnix-store-core,
+    hnix-store-json,
+    process,
+    text,
+    transformers,
+    validation,
+    vector,
+
+executable demo-ca
+  import:           common
+
+  main-is:          demo-ca.hs
+
+  -- other-extensions:
+
+  build-depends:
+    aeson,
+    base ^>=4.18.2.1,
+    bytestring,
+    containers,
+    data-default,
+    dependent-sum,
+    directory,
+    hnix-store-core,
+    hnix-store-json,
+    process,
+    sandstone,
+    text,
+    transformers,
+    validation,
+    vector,
+
+  hs-source-dirs: src-bin
 
   default-language: Haskell2010
