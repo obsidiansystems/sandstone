@@ -7,7 +7,6 @@ import Data.Text.IO qualified as T
 import Data.Validation
 import System.Directory (withCurrentDirectory)
 import System.Nix.DerivedPath
-import System.Nix.JSON ()
 
 import Sandstone.GhcMakefile.Parse
 import Sandstone.NixCLI

@@ -14,7 +14,7 @@ extra-doc-files:    CHANGELOG.md
 -- extra-source-files:
 
 common common
-  ghc-options: -Wall
+  ghc-options: -Wall -Wunused-packages
 
   default-extensions:
     AllowAmbiguousTypes
@@ -80,7 +80,6 @@ library
     containers,
     data-default,
     dependent-sum,
-    directory,
     hnix-store-core,
     hnix-store-json,
     process,
@@ -97,21 +96,12 @@ executable demo-ca
   -- other-extensions:
 
   build-depends:
-    aeson,
-    base ^>=4.18.2.1,
-    bytestring,
-    containers,
-    data-default,
-    dependent-sum,
+    base,
     directory,
     hnix-store-core,
-    hnix-store-json,
-    process,
     sandstone,
     text,
-    transformers,
     validation,
-    vector,
 
   hs-source-dirs: src-bin
 
