@@ -51,8 +51,6 @@ main = do
     Failure e -> fail $ show e
     Success a -> pure a
 
-  let todo = fmap ((\(a, _, b) -> (a, b)) . lookupVertex) $ reverseTopSort graph
-
   let ops = StoreOperations
        { insertDerivation = nixDerivationAdd
        , insertFileFromPath = nixStoreAdd
@@ -65,9 +63,7 @@ main = do
        , lndirDrvPath = SingleDerivedPath_Opaque lndirDrvPath
        }
 
-  memo <- flip execStateT Map.empty $ mapM_ (uncurry $ writeCompilationDerivation' T.putStrLn ops ctx) todo
-
-  finalDrv <- writeLinkDerivation T.putStrLn ops ctx memo $ (\(a, _, _) -> a) . lookupVertex <$> vertices graph
+  finalDrv <- writeBothDerivations T.putStrLn ops ctx graph lookupVertex
 
   nixStoreRealise finalDrv
 
@@ -84,6 +80,19 @@ data PathCtx = PathCtx
   , coreutilsDrvPath :: SingleDerivedPath
   , lndirDrvPath :: SingleDerivedPath
   } deriving (Eq, Ord, Show)
+
+writeBothDerivations
+  :: MonadFail m
+  => (Text -> m ())
+  -> StoreOperations m
+  -> PathCtx
+  -> Graph
+  -> (Vertex -> (Module, b, [Module]))
+  -> m StorePath
+writeBothDerivations log ops ctx graph lookupVertex = do
+  let todo = fmap ((\(a, _, b) -> (a, b)) . lookupVertex) $ reverseTopSort graph
+  memo <- flip execStateT Map.empty $ mapM_ (uncurry $ writeCompilationDerivation' log ops ctx) todo
+  writeLinkDerivation log ops ctx memo $ (\(a, _, _) -> a) . lookupVertex <$> vertices graph
 
 writeCompilationDerivation'
   :: MonadFail m
