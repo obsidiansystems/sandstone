@@ -13,6 +13,7 @@ import Data.Default
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as T
+import Data.Text.IO qualified as T
 import System.Nix.Derivation
 import System.Nix.JSON ()
 import System.Nix.StorePath
@@ -34,6 +35,9 @@ nixStoreRealise extraArgs fp =
 nixDerivationAdd :: [String] -> Derivation -> IO (Either InvalidPathError StorePath)
 nixDerivationAdd extraArgs drv = do
   let drvJson = T.decodeUtf8 $ BSL.toStrict $ Aeson.encode drv
+  T.putStrLn "==> DRV"
+  T.putStrLn drvJson
+  T.putStrLn "DRV <=="
   str <- readProcess "nix" (extraArgs <> [ "derivation", "add"]) $ T.unpack drvJson
   pure $ parsePathFromText storeDir $ T.strip $ T.pack str
 

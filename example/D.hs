@@ -1,4 +1,6 @@
-module D where
+module D
+  ( answer
+  ) where
 
 import B
 import C

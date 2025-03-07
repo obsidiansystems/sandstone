@@ -2,4 +2,4 @@ module Main where
 
 import D
 
-main = putStrLn "Hello, World, from Sandstone!"
+main = putStrLn $ "Hello, World, from Sandstone! " ++ show answer
