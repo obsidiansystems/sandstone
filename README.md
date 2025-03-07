@@ -24,9 +24,10 @@ Current demo:
   -f . dyn-drvs-test-res \
   --build-cores 20 -v --print-out-paths)"
 ```
+(This is using the [pinned `nix`](./default.nix).)
 
 Methodology:
 
 - GHC's [ability to dump makefiles](https://downloads.haskell.org/ghc/latest/docs/users_guide/separate_compilation.html#dependency-generation)
 
-- Nix's [dynamic derivation](https://nix.dev/manual/nix/latest/development/experimental-features#xp-feature-dynamic-derivations)
+- Nix's [dynamic derivations](https://nix.dev/manual/nix/latest/development/experimental-features#xp-feature-dynamic-derivations)
