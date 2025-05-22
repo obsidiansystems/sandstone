@@ -16,7 +16,7 @@ Current demo:
 
 ```bash
 "/tmp/sand/$( \
-  /nix/store/5816ss5q8d8mpigj5wl0fp078dh2sy7j-nix-2.27.0pre19700101_dirty/bin/nix build \
+  /nix/store/3jm8cqf6l2m91vr6rbcyzq39f7zfyaw2-nix-2.30.0pre19700101_dirty/bin/nix build \
   -L \
   --store /tmp/sand \
   --substituters 'http://cache.nixos.org' \

@@ -14,6 +14,26 @@ rec {
     {
       overlays = [
         (import ./dep/nix).overlays.default
+        # Until bump to 25.05
+        (self: super: {
+          nixDependencies2 = super.nixDependencies2.overrideScope (super': self': {
+            boost = (super.boost.override {
+                extraB2Args = [
+                  "--with-container"
+                  "--with-context"
+                  "--with-coroutine"
+                  "--with-iostreams"
+                  "--with-regex"
+                ];
+                enableIcu = false;
+              }).overrideAttrs
+                (old: {
+                  # Need to remove `--with-*` to use `--with-libraries=...`
+                  buildPhase = lib.replaceStrings [ "--without-python" ] [ "" ] old.buildPhase;
+                  installPhase = lib.replaceStrings [ "--without-python" ] [ "" ] old.installPhase;
+                });
+          });
+        })
       ];
     }
     // nixpkgsArgs
