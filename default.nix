@@ -68,6 +68,43 @@ rec {
 
   dyn-drvs-test-res = builtins.outputOf dyn-drvs-test.outPath "out";
 
+  cabal-dyn-drvs-plan = builtins.derivation {
+    name = "mylib-intermediates.drv";
+    system = pkgs.stdenv.hostPlatform.system;
+
+    builder = "${haskellPackages.sandstone}/bin/cabal-dyn-drv";
+
+    PATH = "${pkgs.coreutils}/bin";
+
+    ghc = pkgs.ghc.outPath;
+
+    bash = "${builtins.unsafeDiscardOutputDependency pkgs.bash.drvPath}!out";
+    coreutils = "${builtins.unsafeDiscardOutputDependency pkgs.coreutils.drvPath}!out";
+    lndir = "${builtins.unsafeDiscardOutputDependency pkgs.xorg.lndir.drvPath}!out";
+
+    sources = ./example-cabal;
+    intermediatesSubdir = "share/haskell/${pkgs.ghc.version}/mylib-0.1/dist";
+    # Must produce the same ghc flags as the resume derivation's configure.
+    planConfigureFlags = "--enable-shared --enable-static --enable-library-vanilla --enable-split-sections --disable-library-profiling";
+
+    requiredSystemFeatures = [ "builder-rpc-v0" ];
+
+    __contentAddressed = true;
+    outputHashMode = "text";
+    outputHashAlgo = "sha256";
+  };
+
+  cabal-dyn-drvs-test = haskellPackages.mkDerivation {
+    pname = "mylib";
+    version = "0.1";
+    src = ./example-cabal;
+    license = lib.licenses.bsd3;
+    doCheck = false;
+    doHaddock = false;
+    enableLibraryProfiling = false;
+    previousIntermediates = builtins.outputOf cabal-dyn-drvs-plan.outPath "out";
+  };
+
   # Until a version of Nix is shipped with dynamic derivations working,
   # we'll take a version from master.
   nix = pkgs.nix;
