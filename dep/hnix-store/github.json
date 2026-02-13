@@ -1,9 +1,9 @@
 {
-  "owner": "obsidiansystems",
+  "owner": "haskell-nix",
   "repo": "hnix-store",
-  "branch": "derivation-work",
+  "branch": "master",
   "private": false,
   "fetchSubmodules": true,
-  "rev": "12114d9d5bde9ed489335027d376982b3eb17e4b",
-  "sha256": "1kyz6iriql0ba73g66wjyr2am0x3i0dqnrls8im1a88vfvhsyzym"
+  "rev": "f6a79c1179abaaae0f19454f6c4ef064d0d6d4e9",
+  "sha256": "0lnyqhag09lx529cmya6ag48zfl1qb1zj96drmc8rnfp4mchidra"
 }
