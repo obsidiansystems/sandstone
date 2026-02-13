@@ -45,7 +45,7 @@ The pipeline, from a source tree to a linked binary:
 
 ## Requirements
 
-Sandstone needs a build of Nix with dynamic derivations and several experimental features enabled: `ca-derivations`, `dynamic-derivations`, `recursive-nix`, and `nix-command`. The repository pins a suitable Nix ([`dep/nix`](./dep/nix)) and the `hnix-store` fork it builds against ([`dep/hnix-store`](./dep/hnix-store)), so you do not have to assemble them yourself.
+Sandstone needs a build of Nix with the `ca-derivations` and `dynamic-derivations` experimental features enabled, plus the `builder-rpc-v0` system feature. The repository pins a suitable Nix ([`dep/nix`](./dep/nix)) and the `hnix-store` fork it builds against ([`dep/hnix-store`](./dep/hnix-store)), so you do not have to assemble them yourself.
 
 ## Trying it out
 
@@ -59,18 +59,19 @@ nix-build -A nix
 out=$(./result/bin/nix build -f . dyn-drvs-test-res \
   --store /tmp/sand \
   --substituters https://cache.nixos.org \
-  --extra-experimental-features 'ca-derivations dynamic-derivations recursive-nix nix-command' \
+  --extra-experimental-features 'ca-derivations dynamic-derivations' \
+  --extra-system-features builder-rpc-v0 \
   -L -v --print-out-paths)
 
 # 3. The build used the /tmp/sand store, so prefix it to run the resulting binary.
 /tmp/sand"$out"
 ```
 
-`dyn-drvs-test-res` (defined in [`default.nix`](./default.nix)) runs Sandstone *inside* a Nix build under `recursive-nix`: it generates the per-module derivation graph for `example/`, emits it as a dynamic derivation, and Nix then builds that into a runnable executable.
+`dyn-drvs-test-res` (defined in [`default.nix`](./default.nix)) runs Sandstone *inside* a Nix build under `builder-rpc-v0`: it generates the per-module derivation graph for `example/`, adds it to the store over the daemon protocol, and registers it as the build's output, which Nix then builds into a runnable executable.
 
 ## Repository layout
 
-- [`src/Sandstone/`](./src/Sandstone): the library. Makefile parsing and the module graph (`GhcMakefile`), derivation generation (`WriteDerivation`), the Nix CLI backend (`NixCLI`), and accumulating errors (`Error`).
+- [`src/Sandstone/`](./src/Sandstone): the library. Makefile parsing and the module graph (`GhcMakefile`), derivation generation (`WriteDerivation`), the daemon protocol backend (`RemoteStore`), and accumulating errors (`Error`).
 - [`src-bin/`](./src-bin): two demos. `demo-ca` drives a build from the outside against a local store; `demo-dyn-drv` runs inside a Nix build and is the body of the dynamic derivation.
 - [`example/`](./example): a small Haskell project used as a build fixture (nested modules and an `hs-boot` cycle included).
 - [`dep/`](./dep): pinned dependencies as [nix-thunk](https://github.com/obsidiansystems/nix-thunk) thunks (`nixpkgs`, `nix`, and the `hnix-store` fork).

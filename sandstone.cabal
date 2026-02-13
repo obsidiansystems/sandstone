@@ -72,21 +72,24 @@ library
     Sandstone.Error
     Sandstone.GhcMakefile.Graph
     Sandstone.GhcMakefile.Parse
-    Sandstone.NixCLI
+    Sandstone.RemoteStore
     Sandstone.WriteDerivation
 
   build-depends:
-    aeson,
     base,
-    bytestring,
     containers,
     data-default,
     dependent-sum,
+    hnix-store-aterm,
     hnix-store-core,
     hnix-store-json,
-    process,
+    hnix-store-nar,
+    hnix-store-remote,
+    mtl,
+    network,
     text,
     transformers,
+    unordered-containers,
     validation,
     vector,
 
@@ -99,6 +102,7 @@ executable demo-ca
     base,
     directory,
     hnix-store-core,
+    process,
     sandstone,
     text,
     validation,
