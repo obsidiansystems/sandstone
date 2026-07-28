@@ -2,6 +2,6 @@
   "owner": "nixos",
   "repo": "nix",
   "private": false,
-  "rev": "b4bea57667eb5413dbc808dd11c10106ef91c770",
-  "sha256": "1s1f4pxmkb7p53kfvmy2j0d9505vi2aqbm2fknzjk608hsqkq83w"
+  "rev": "2c6d06e9387cf58167cb5a7ab91cee7333d8d17c",
+  "sha256": "0nmyqsysv9k9rpf6nyi8dkylf9dcmii0yc952js6wxhmdwsllgms"
 }

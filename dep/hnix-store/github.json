@@ -3,6 +3,7 @@
   "repo": "hnix-store",
   "branch": "derivation-work",
   "private": false,
-  "rev": "7a4aef8c8e548cc9cc7908b39491f36ee75bc89f",
-  "sha256": "1zjvcmf8f8hzc2d8l5d59izdc1gx8l9ijab01ikmi3y2sg8ldlqv"
+  "fetchSubmodules": true,
+  "rev": "12114d9d5bde9ed489335027d376982b3eb17e4b",
+  "sha256": "1kyz6iriql0ba73g66wjyr2am0x3i0dqnrls8im1a88vfvhsyzym"
 }
