@@ -42,12 +42,15 @@ rec {
       });
   };
 
-  dyn-drvs-test = pkgs.stdenv.mkDerivation {
-    name = "sandstone-dyn-drvs-on-example.drv";
+  # Can't use stdenv.mkDerivation here, since builder-rpc-v0 builds don't get
+  # $out in their environment and stdenv's setup bails without it.
+  dyn-drvs-test = builtins.derivation {
+    name = "link.drv";
+    system = pkgs.stdenv.hostPlatform.system;
+
+    builder = "${haskellPackages.sandstone}/bin/demo-dyn-drv";
 
     ghc = pkgs.ghc.outPath;
-
-    nativeBuildInputs = [ pkgs.nix ];
 
     # TODO should use ^
     bash = "${builtins.unsafeDiscardOutputDependency pkgs.bash.drvPath}!out";
@@ -56,12 +59,7 @@ rec {
 
     sources = ./example;
 
-    buildCommand = ''
-      export NIX_CONFIG='extra-experimental-features = nix-command ca-derivations dynamic-derivations'
-      ${haskellPackages.sandstone}/bin/demo-dyn-drv
-    '';
-
-    requiredSystemFeatures = [ "recursive-nix" ];
+    requiredSystemFeatures = [ "builder-rpc-v0" ];
 
     __contentAddressed = true;
     outputHashMode = "text";
