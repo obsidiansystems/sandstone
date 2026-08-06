@@ -14,6 +14,7 @@ import Prelude hiding (log)
 
 import Control.Monad.Trans.State
 import Control.Monad.Trans.Class
+import Data.Char (isAlphaNum)
 import Data.Graph
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -42,6 +43,8 @@ data CabalCtx = CabalCtx
   , bashPath :: SingleDerivedPath
   , coreutilsPath :: SingleDerivedPath
   , lndirPath :: SingleDerivedPath
+  , packageDbPaths :: [StorePath]
+  , buildPlatform :: Text
   , ghcFlags :: [Text]
   } deriving (Eq, Ord, Show)
 
@@ -54,12 +57,17 @@ writeCabalDerivations
   -> StorePathName
   -> Text
   -> FilePath
+  -> (Module -> FilePath)
   -> Graph
   -> (Vertex -> (Module, b, [Module]))
   -> m StorePath
-writeCabalDerivations log storeDir ops ctx assembleName subdir sourceRoot graph lookupVertex = do
-  let todo = fmap ((\(a, _, b) -> (a, b)) . lookupVertex) $ reverseTopSort graph
-  memo <- flip execStateT Map.empty $ mapM_ (uncurry $ writeCellDerivation' log storeDir ops ctx sourceRoot) todo
+writeCabalDerivations log storeDir ops ctx assembleName subdir sourceRoot srcPath graph lookupVertex = do
+  let moduleOf = (\(a, _, _) -> a) . lookupVertex
+  -- GHC demand-loads interfaces beyond the direct imports whenever a
+  -- dependency's signatures or unfoldings mention deeper modules, so
+  -- every cell gets the transitive closure.
+  let todo = [ (moduleOf v, [moduleOf w | w <- reachable graph v, w /= v]) | v <- reverseTopSort graph ]
+  memo <- flip execStateT Map.empty $ mapM_ (uncurry $ writeCellDerivation' log storeDir ops ctx sourceRoot srcPath) todo
   writeAssembleDerivation log storeDir ops ctx assembleName subdir memo
 
 writeCellDerivation'
@@ -69,12 +77,13 @@ writeCellDerivation'
   -> StoreOperations m
   -> CabalCtx
   -> FilePath
+  -> (Module -> FilePath)
   -> Module
   -> [Module]
   -> StateT DrvMemo m ()
-writeCellDerivation' log storeDir ops ctx sourceRoot node deps = do
+writeCellDerivation' log storeDir ops ctx sourceRoot srcPath node deps = do
   memo <- get
-  drvPath <- lift $ writeCellDerivation log storeDir ops ctx sourceRoot memo node deps
+  drvPath <- lift $ writeCellDerivation log storeDir ops ctx sourceRoot srcPath memo node deps
   modify $ Map.insert node drvPath
 
 writeCellDerivation
@@ -85,19 +94,20 @@ writeCellDerivation
   -> StoreOperations m
   -> CabalCtx
   -> FilePath
+  -> (Module -> FilePath)
   -> DrvMemo
   -> Module
   -> [Module]
   -> m StorePath
-writeCellDerivation log storeDir ops ctx sourceRoot memo module' deps = do
+writeCellDerivation log storeDir ops ctx sourceRoot srcPath memo module' deps = do
     let print' :: Show a => a -> m ()
         print' = log . T.pack . show
 
     print' module'
 
     Right source <- insertFileFromPath ops
-      (sourceRoot <> "/" <> pathNoExt module' <> "." <> T.unpack (sourceExt module'))
-      (T.intercalate "." (NEL.toList $ moduleName module') <> "." <> sourceExt module')
+      (sourceRoot <> "/" <> srcPath module')
+      (storeNameify $ T.intercalate "." (NEL.toList $ moduleName module') <> "." <> sourceExt module')
 
     Just deps' <- pure $ traverse (flip Map.lookup memo) deps
     log "==> DEPS:"
@@ -116,9 +126,10 @@ writeCellDerivation log storeDir ops ctx sourceRoot memo module' deps = do
     let ifaceOut ext = "$interface/" <> T.pack (pathNoExt module') <> "." <> ext
     let oExt = objectExt module'
     let hiExt = interfaceExt module'
+    let dynamicToo = "-dynamic-too" `elem` ghcFlags ctx
 
     Right result <- insertDerivation ops $ Derivation
-      { name = bad $ "compile-" <> T.intercalate "." (NEL.toList $ moduleName module')
+      { name = bad $ storeNameify $ "compile-" <> T.intercalate "." (NEL.toList $ moduleName module')
       , outputs = outputsFromList [object, interface]
       , inputs = foldMap
           derivationInputsFromSingleDerivedPath
@@ -128,8 +139,9 @@ writeCellDerivation log storeDir ops ctx sourceRoot memo module' deps = do
           : bashPath ctx
           : coreutilsPath ctx
           : lndirPath ctx
-          : (flip SingleDerivedPath_Built interface . SingleDerivedPath_Opaque <$> deps')
-      , platform = "x86_64-linux"
+          : (SingleDerivedPath_Opaque <$> packageDbPaths ctx)
+          <> (flip SingleDerivedPath_Built interface . SingleDerivedPath_Opaque <$> deps')
+      , platform = buildPlatform ctx
       , builder = bashPlaceholder <> "/bin/bash"
       , args = V.fromList
           [ "-c"
@@ -154,10 +166,15 @@ writeCellDerivation log storeDir ops ctx sourceRoot memo module' deps = do
             , T.unwords $ [ghc <> "/bin/ghc", "-c", relSrc] <> ghcFlags ctx
             , "mkdir -p $(dirname " <> objOut oExt <> ") $(dirname " <> ifaceOut hiExt <> ")"
             , "cp " <> built oExt <> " " <> objOut oExt
-            , "cp " <> built ("dyn_" <> oExt) <> " " <> objOut ("dyn_" <> oExt)
             , "cp " <> built hiExt <> " " <> ifaceOut hiExt
-            , "cp " <> built ("dyn_" <> hiExt) <> " " <> ifaceOut ("dyn_" <> hiExt)
             ]
+            <>
+            (if dynamicToo
+              then
+                [ "cp " <> built ("dyn_" <> oExt) <> " " <> objOut ("dyn_" <> oExt)
+                , "cp " <> built ("dyn_" <> hiExt) <> " " <> ifaceOut ("dyn_" <> hiExt)
+                ]
+              else [])
           ]
       , env = Map.fromList
           [ ("object", renderPlaceholder $ createPlaceholder object)
@@ -203,7 +220,7 @@ writeAssembleDerivation log storeDir ops ctx assembleName subdir memo = do
                 , SingleDerivedPath_Built (SingleDerivedPath_Opaque d) interface
                 ])
               deps'
-      , platform = "x86_64-linux"
+      , platform = buildPlatform ctx
       , builder = bashPlaceholder <> "/bin/bash"
       , args = V.fromList
           [ "-c"
@@ -226,3 +243,9 @@ writeAssembleDerivation log storeDir ops ctx assembleName subdir memo = do
       }
     print' result
     pure result
+
+-- Haskell module names can contain characters that store path names
+-- cannot, like apostrophes.
+storeNameify :: Text -> Text
+storeNameify = T.map $ \c ->
+  if isAlphaNum c || c `elem` ("+-._?=" :: String) then c else '-'

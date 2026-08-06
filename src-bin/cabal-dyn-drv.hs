@@ -6,13 +6,17 @@ import Prelude hiding (log)
 import Control.Monad ((<=<), unless)
 import Control.Monad.IO.Class (liftIO)
 import Data.ByteString qualified as BS
+import Data.Char (isDigit)
 import Data.List qualified as List
+import Data.Map (Map)
+import Data.Map qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as T
 import Data.Text.IO qualified as T
 import Data.Validation
-import System.Directory (doesDirectoryExist, withCurrentDirectory)
+import System.Directory (doesDirectoryExist, doesFileExist, getCurrentDirectory, withCurrentDirectory)
 import System.Environment
 import System.Nix.StorePath
 import System.Nix.DerivedPath
@@ -38,68 +42,79 @@ main = do
   coreutilsPath' <- getDerivedPathFromEnv "coreutils"
   lndirPath' <- getDerivedPathFromEnv "lndir"
 
-  sources <- getEnv "sources"
   subdir <- T.pack <$> getEnv "intermediatesSubdir"
-  planConfigureFlags <- words <$> getEnv "planConfigureFlags"
+  platform <- T.pack <$> getEnv "system"
 
   outerName <- T.pack <$> getEnv "name"
   assembleName <- case T.stripSuffix ".drv" outerName of
     Nothing -> fail $ "derivation name should end in .drv, since its output is a derivation: " <> show outerName
     Just n -> pure $ bad n
 
-  buildTop <- getEnv "NIX_BUILD_TOP"
-  let work = buildTop <> "/work"
   let ghcBinDir = T.unpack (storePathToText storeDir ghcPath') <> "/bin"
 
-  callProcess "cp" ["-r", "--no-preserve=mode", sources, work]
+  -- With no sources env the tree is already unpacked and configured
+  -- around us, with the argv-dumping ghc shim recorded at configure
+  -- time. Otherwise prepare all of that ourselves.
+  mSources <- lookupEnv "sources"
+  work <- case mSources of
+    Nothing -> getCurrentDirectory
+    Just sources -> do
+      ghcShim <- getEnv "ghcShim"
+      planConfigureFlags <- words <$> getEnv "planConfigureFlags"
+      buildTop <- getEnv "NIX_BUILD_TOP"
+      let work = buildTop <> "/work"
 
-  let shim = buildTop <> "/ghc-shim"
-  writeFile shim $ unlines
-    [ "#!/bin/sh"
-    , "for a in \"$@\"; do"
-    , "  if [ \"$a\" = --make ]; then"
-    , "    for b in \"$@\"; do printf '%s\\0' \"$b\"; done > ghc-args.bin"
-    , "    exit 0"
-    , "  fi"
-    , "done"
-    , "exec " <> ghcBinDir <> "/ghc \"$@\""
-    ]
-  callProcess "chmod" ["+x", shim]
+      callProcess "cp" ["-r", "--no-preserve=mode", sources, work]
 
-  (graph, lookupVertex, cellFlags) <- withCurrentDirectory work $ do
-    callProcess (ghcBinDir <> "/ghc") ["--make", "-o", "Setup", "Setup.hs"]
-    callProcess "./Setup" $
-      [ "configure"
-      , "--with-ghc=" <> shim
-      , "--with-ghc-pkg=" <> ghcBinDir <> "/ghc-pkg"
-      ] <> planConfigureFlags
+      withCurrentDirectory work $ do
+        callProcess (ghcBinDir <> "/ghc") ["--make", "-o", "Setup", "Setup.hs"]
+        callProcess "./Setup" $
+          [ "configure"
+          , "--with-ghc=" <> ghcShim
+          , "--with-ghc-pkg=" <> ghcBinDir <> "/ghc-pkg"
+          ] <> planConfigureFlags
 
+      pure work
+
+  buildTargetArgs <- maybe [] words <$> lookupEnv "buildTarget"
+  buildFlagsArgs <- maybe [] words <$> lookupEnv "buildFlags"
+
+  (graph, lookupVertex, cellFlags, srcMap) <- withCurrentDirectory work $ do
     -- Aborted on purpose once the shim has captured ghc's argv.
-    (_, _, _, ph) <- createProcess (proc "./Setup" ["build"])
-    _ <- waitForProcess ph
+    (_, _, _, ph) <- createProcess (proc "./Setup" (["build"] <> buildTargetArgs <> buildFlagsArgs))
+    code <- waitForProcess ph
+
+    captured <- doesFileExist "ghc-args.bin"
+    unless captured $
+      fail $ "Setup build failed before invoking ghc, with " <> show code
 
     argv <- map T.decodeUtf8 . filter (not . BS.null) . BS.split 0 <$> BS.readFile "ghc-args.bin"
-    let flags = List.delete "--make" argv
+    let flags = dropParallelFlags $ List.delete "--make" argv
 
     hasDb <- doesDirectoryExist "dist/package.conf.inplace"
     unless hasDb $
       callProcess (ghcBinDir <> "/ghc-pkg") ["init", "dist/package.conf.inplace"]
 
-    -- Cabal's -odir would prefix the makefile's object paths with
-    -- dist/build, which the parser reads as module names.
-    callProcess (ghcBinDir <> "/ghc") $ ["-M", "-dep-makefile", "Makefile.sandstone"] <> map T.unpack (dropOutputDirFlags flags)
+    callProcess (ghcBinDir <> "/ghc") $ ["-M", "-dep-makefile", "Makefile.sandstone"] <> map T.unpack flags
 
-    makefile <- T.readFile "Makefile.sandstone"
+    rawMakefile <- T.readFile "Makefile.sandstone"
+    let (makefile, srcMap) = remapMakefile (odirOf flags) rawMakefile
     (graph, lookupVertex) <- case parseMakefile makefile of
       Failure e -> fail $ show e
       Success a -> pure a
 
     let moduleNames = dotted . (\(a, _, _) -> a) . lookupVertex <$> vertices graph
-    pure (graph, lookupVertex, filter (`notElem` moduleNames) flags)
+    pure (graph, lookupVertex, filter (`notElem` moduleNames) flags, srcMap)
+
+  let srcPathOf m = Map.findWithDefault
+        (pathNoExt m <> "." <> T.unpack (sourceExt m))
+        (pathNoExt m, sourceExt m)
+        srcMap
 
   socketPath <- builderSocketPath
   res <- runBuilderRpc socketPath $ do
     Right autogenPath' <- insertFileFromPath remoteStoreOps (work <> "/dist/build/autogen") "autogen"
+    (cellFlags', dbPaths) <- addPackageDbs cellFlags
 
     let ctx = CabalCtx
          { ghcPath = ghcPath'
@@ -107,22 +122,78 @@ main = do
          , bashPath = bashPath'
          , coreutilsPath = coreutilsPath'
          , lndirPath = lndirPath'
-         , ghcFlags = cellFlags
+         , packageDbPaths = dbPaths
+         , buildPlatform = platform
+         , ghcFlags = cellFlags'
          }
 
-    finalDrv <- writeCabalDerivations (liftIO . T.putStrLn) storeDir remoteStoreOps ctx assembleName subdir work graph lookupVertex
+    finalDrv <- writeCabalDerivations (liftIO . T.putStrLn) storeDir remoteStoreOps ctx assembleName subdir work srcPathOf graph lookupVertex
     registerOutput finalDrv out
     pure finalDrv
 
   finalDrv <- either (fail . show) pure res
   T.putStrLn $ "submitted " <> storePathToText storeDir finalDrv <> " as output 'out'"
 
+-- Cabal assembles the dependency package db in a temp dir, which the
+-- compile cells cannot see, so it goes into the store with its
+-- references scanned.
+addPackageDbs :: [Text] -> BuilderRpcM ([Text], [StorePath])
+addPackageDbs = go
+  where
+    storePrefix = T.decodeUtf8 (unStoreDir storeDir) <> "/"
+    go ("-package-db" : p : rest)
+      | "/" `T.isPrefixOf` p && not (storePrefix `T.isPrefixOf` p) = do
+          Right db <- insertFileFromPath remoteStoreOps (T.unpack p) "package.conf.d"
+          (rest', dbs) <- go rest
+          pure ("-package-db" : storePathToText storeDir db : rest', db : dbs)
+    go (f : rest) = do
+      (rest', dbs) <- go rest
+      pure (f : rest', dbs)
+    go [] = pure ([], [])
+
+-- The makefile's paths carry Cabal's -odir prefix on artifacts and
+-- real directory prefixes on sources, neither of which are module
+-- paths. Sources get rewritten to the module path from their target,
+-- with the real location remembered for the cells.
+remapMakefile :: Text -> Text -> (Text, Map (FilePath, Text) FilePath)
+remapMakefile odirPrefix rawMakefile =
+  let (ls, srcMap) = foldr step ([], Map.empty) (T.lines rawMakefile)
+  in (T.unlines ls, srcMap)
+  where
+    step line (ls, m)
+      | "#" `T.isPrefixOf` line || T.null line = (line : ls, m)
+      | otherwise =
+          let (target0, rest) = T.breakOn " : " line
+          in case T.stripPrefix " : " rest of
+            Nothing -> (line : ls, m)
+            Just dep ->
+              let target = fromMaybe target0 $ T.stripPrefix odirPrefix target0
+                  (modPath, _) = T.breakOn "." target
+              in if ".hs" `T.isSuffixOf` dep || ".hs-boot" `T.isSuffixOf` dep
+                then
+                  let srcExt = if ".hs-boot" `T.isSuffixOf` dep then "hs-boot" else "hs"
+                  in ( (target <> " : " <> modPath <> "." <> srcExt) : ls
+                     , Map.insert (T.unpack modPath, srcExt) (T.unpack dep) m
+                     )
+                else
+                  ( (target <> " : " <> fromMaybe dep (T.stripPrefix odirPrefix dep)) : ls
+                  , m
+                  )
+
 dotted :: Module -> Text
 dotted m = T.intercalate "." $ NEL.toList $ moduleName m
 
-dropOutputDirFlags :: [Text] -> [Text]
-dropOutputDirFlags = go
+odirOf :: [Text] -> Text
+odirOf ("-odir" : d : _) = d <> "/"
+odirOf (_ : rest) = odirOf rest
+odirOf [] = "dist/build/"
+
+-- One-shot ghc ignores -j, and RTS options vary with the building
+-- machine's core count, which would split the content-addressed cache.
+dropParallelFlags :: [Text] -> [Text]
+dropParallelFlags = go
   where
-    go (f : _ : rest) | f `elem` ["-outputdir", "-odir", "-hidir", "-hiedir", "-stubdir"] = go rest
+    go ("+RTS" : rest) = go $ drop 1 $ dropWhile (/= "-RTS") rest
+    go (f : rest) | "-j" `T.isPrefixOf` f && T.all isDigit (T.drop 2 f) = go rest
     go (f : rest) = f : go rest
     go [] = []

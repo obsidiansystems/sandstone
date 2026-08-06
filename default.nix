@@ -68,8 +68,20 @@ rec {
 
   dyn-drvs-test-res = builtins.outputOf dyn-drvs-test.outPath "out";
 
+  # Failing loudly stops Setup at the first invocation, before a second
+  # way like profiling overwrites the dump.
+  cabal-ghc-shim = pkgs.writeShellScriptBin "ghc" ''
+    for a in "$@"; do
+      if [ "$a" = --make ]; then
+        for b in "$@"; do printf '%s\0' "$b"; done > ghc-args.bin
+        exit 1
+      fi
+    done
+    exec ${pkgs.ghc}/bin/ghc "$@"
+  '';
+
   cabal-dyn-drvs-plan = builtins.derivation {
-    name = "mylib-intermediates.drv";
+    name = "mylib-0.1-intermediates.drv";
     system = pkgs.stdenv.hostPlatform.system;
 
     builder = "${haskellPackages.sandstone}/bin/cabal-dyn-drv";
@@ -77,6 +89,7 @@ rec {
     PATH = "${pkgs.coreutils}/bin";
 
     ghc = pkgs.ghc.outPath;
+    ghcShim = "${cabal-ghc-shim}/bin/ghc";
 
     bash = "${builtins.unsafeDiscardOutputDependency pkgs.bash.drvPath}!out";
     coreutils = "${builtins.unsafeDiscardOutputDependency pkgs.coreutils.drvPath}!out";
@@ -85,7 +98,9 @@ rec {
     sources = ./example-cabal;
     intermediatesSubdir = "share/haskell/${pkgs.ghc.version}/mylib-0.1/dist";
     # Must produce the same ghc flags as the resume derivation's configure.
-    planConfigureFlags = "--enable-shared --enable-static --enable-library-vanilla --enable-split-sections --disable-library-profiling";
+    planConfigureFlags =
+      "--enable-shared --enable-static --enable-library-vanilla --disable-library-profiling"
+      + lib.optionalString (!pkgs.stdenv.hostPlatform.isDarwin) " --enable-split-sections";
 
     requiredSystemFeatures = [ "builder-rpc-v0" ];
 

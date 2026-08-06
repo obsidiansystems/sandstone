@@ -5,6 +5,7 @@ license: BSD-3-Clause
 build-type: Simple
 
 library
+  hs-source-dirs: src
   exposed-modules: A, B, Nested.C
   build-depends: base
   default-language: Haskell2010
