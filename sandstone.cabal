@@ -69,6 +69,7 @@ library
   hs-source-dirs: src
 
   exposed-modules:
+    Sandstone.Cabal
     Sandstone.Error
     Sandstone.GhcMakefile.Graph
     Sandstone.GhcMakefile.Parse
@@ -124,6 +125,28 @@ executable demo-dyn-drv
     text,
     validation,
     process,
+
+  hs-source-dirs: src-bin
+
+  default-language: Haskell2010
+
+executable cabal-dyn-drv
+  import:           common
+
+  main-is:          cabal-dyn-drv.hs
+
+  build-depends:
+    base,
+    bytestring,
+    Cabal,
+    containers,
+    directory,
+    filepath,
+    hnix-store-core,
+    process,
+    sandstone,
+    text,
+    validation,
 
   hs-source-dirs: src-bin
 
