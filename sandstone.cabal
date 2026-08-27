@@ -138,8 +138,10 @@ executable cabal-dyn-drv
   build-depends:
     base,
     bytestring,
+    Cabal,
     containers,
     directory,
+    filepath,
     hnix-store-core,
     process,
     sandstone,

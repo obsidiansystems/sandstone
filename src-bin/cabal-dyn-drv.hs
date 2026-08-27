@@ -15,9 +15,15 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as T
 import Data.Text.IO qualified as T
+import Data.Traversable (for)
 import Data.Validation
-import System.Directory (doesDirectoryExist, doesFileExist, getCurrentDirectory, withCurrentDirectory)
+import Distribution.PackageDescription (PackageDescription (dataDir, dataFiles, extraSrcFiles, specVersion), packageDescription)
+import Distribution.Simple.Glob (matchDirFileGlob)
+import Distribution.Simple.PackageDescription (readGenericPackageDescription)
+import Distribution.Verbosity qualified as Verbosity
+import System.Directory (doesDirectoryExist, doesFileExist, getCurrentDirectory, listDirectory, withCurrentDirectory)
 import System.Environment
+import System.FilePath (takeFileName, (</>))
 import System.Nix.StorePath
 import System.Nix.DerivedPath
 import System.Process
@@ -79,6 +85,8 @@ main = do
   buildTargetArgs <- maybe [] words <$> lookupEnv "buildTarget"
   buildFlagsArgs <- maybe [] words <$> lookupEnv "buildFlags"
 
+  extraFiles <- collectExtraFiles work
+
   (graph, lookupVertex, cellFlags, srcMap) <- withCurrentDirectory work $ do
     -- Aborted on purpose once the shim has captured ghc's argv.
     (_, _, _, ph) <- createProcess (proc "./Setup" (["build"] <> buildTargetArgs <> buildFlagsArgs))
@@ -116,6 +124,11 @@ main = do
     Right autogenPath' <- insertFileFromPath remoteStoreOps (work <> "/dist/build/autogen") "autogen"
     (cellFlags', dbPaths) <- addPackageDbs cellFlags
 
+    extraFilePaths' <- for extraFiles $ \rel -> do
+      Right p <- insertFileFromPath remoteStoreOps (work </> rel)
+        (storeNameify $ T.pack $ takeFileName rel)
+      pure (T.pack rel, p)
+
     let ctx = CabalCtx
          { ghcPath = ghcPath'
          , autogenPath = autogenPath'
@@ -123,6 +136,7 @@ main = do
          , coreutilsPath = coreutilsPath'
          , lndirPath = lndirPath'
          , packageDbPaths = dbPaths
+         , extraFilePaths = extraFilePaths'
          , buildPlatform = platform
          , ghcFlags = cellFlags'
          }
@@ -133,6 +147,29 @@ main = do
 
   finalDrv <- either (fail . show) pure res
   T.putStrLn $ "submitted " <> storePathToText storeDir finalDrv <> " as output 'out'"
+
+-- Template Haskell reads files at compile time, and a cell holds one
+-- module's source alone, so the package's stated files ride into every
+-- cell at their own relative paths.
+collectExtraFiles :: FilePath -> IO [FilePath]
+collectExtraFiles work = do
+  entries <- listDirectory work
+  cabalFile <- case filter (".cabal" `List.isSuffixOf`) entries of
+    [one] -> pure one
+    named -> fail $ "expected one .cabal file in the configured tree, found: " <> show named
+
+  pd <- packageDescription <$> readGenericPackageDescription Verbosity.silent (work </> cabalFile)
+
+  let expand dir = matchDirFileGlob Verbosity.silent (specVersion pd) dir
+      dataBase = dataDir pd
+
+  sources <- concat <$> traverse (expand work) (extraSrcFiles pd)
+  dat <-
+    if null dataBase
+    then concat <$> traverse (expand work) (dataFiles pd)
+    else map (dataBase </>) . concat <$> traverse (expand (work </> dataBase)) (dataFiles pd)
+
+  pure $ List.nub $ sources <> dat
 
 -- Cabal assembles the dependency package db in a temp dir, which the
 -- compile cells cannot see, so it goes into the store with its

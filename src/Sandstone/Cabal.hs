@@ -44,6 +44,7 @@ data CabalCtx = CabalCtx
   , coreutilsPath :: SingleDerivedPath
   , lndirPath :: SingleDerivedPath
   , packageDbPaths :: [StorePath]
+  , extraFilePaths :: [(Text, StorePath)]
   , buildPlatform :: Text
   , ghcFlags :: [Text]
   } deriving (Eq, Ord, Show)
@@ -140,6 +141,7 @@ writeCellDerivation log storeDir ops ctx sourceRoot srcPath memo module' deps = 
           : coreutilsPath ctx
           : lndirPath ctx
           : (SingleDerivedPath_Opaque <$> packageDbPaths ctx)
+          <> (SingleDerivedPath_Opaque . snd <$> extraFilePaths ctx)
           <> (flip SingleDerivedPath_Built interface . SingleDerivedPath_Opaque <$> deps')
       , platform = buildPlatform ctx
       , builder = bashPlaceholder <> "/bin/bash"
@@ -161,7 +163,16 @@ writeCellDerivation log storeDir ops ctx sourceRoot srcPath memo module' deps = 
             <>
             [ "cp -r --no-preserve=mode " <> autogen <> "/. dist/build/autogen/"
             , ghc <> "/bin/ghc-pkg init dist/package.conf.inplace"
-            , "mkdir -p $(dirname " <> relSrc <> ")"
+            ]
+            <>
+            concatMap
+              (\(rel, extra) ->
+                [ "mkdir -p $(dirname " <> rel <> ")"
+                , "cp " <> storePathToText storeDir extra <> " " <> rel
+                ])
+              (extraFilePaths ctx)
+            <>
+            [ "mkdir -p $(dirname " <> relSrc <> ")"
             , "cp " <> storePathToText storeDir source <> " " <> relSrc
             , T.unwords $ [ghc <> "/bin/ghc", "-c", relSrc] <> ghcFlags ctx
             , "mkdir -p $(dirname " <> objOut oExt <> ") $(dirname " <> ifaceOut hiExt <> ")"
