@@ -128,6 +128,8 @@ writeCellDerivation log storeDir ops ctx sourceRoot srcPath memo module' deps = 
     let oExt = objectExt module'
     let hiExt = interfaceExt module'
     let dynamicToo = "-dynamic-too" `elem` ghcFlags ctx
+    let quotedFlags :: [Text]
+        quotedFlags = shellQuote <$> ghcFlags ctx
 
     Right result <- insertDerivation ops $ Derivation
       { name = bad $ storeNameify $ "compile-" <> T.intercalate "." (NEL.toList $ moduleName module')
@@ -174,7 +176,7 @@ writeCellDerivation log storeDir ops ctx sourceRoot srcPath memo module' deps = 
             <>
             [ "mkdir -p $(dirname " <> relSrc <> ")"
             , "cp " <> storePathToText storeDir source <> " " <> relSrc
-            , T.unwords $ [ghc <> "/bin/ghc", "-c", relSrc] <> ghcFlags ctx
+            , T.unwords $ [ghc <> "/bin/ghc", "-c", relSrc] <> quotedFlags
             , "mkdir -p $(dirname " <> objOut oExt <> ") $(dirname " <> ifaceOut hiExt <> ")"
             , "cp " <> built oExt <> " " <> objOut oExt
             , "cp " <> built hiExt <> " " <> ifaceOut hiExt
@@ -260,3 +262,18 @@ writeAssembleDerivation log storeDir ops ctx assembleName subdir memo = do
 storeNameify :: Text -> Text
 storeNameify = T.map $ \c ->
   if isAlphaNum c || c `elem` ("+-._?=" :: String) then c else '-'
+
+-- | A ghc flag as one word of the cell's @bash -c@ script. Cabal
+-- renders a @mixins@ renaming inside the @-package-id@ argument, with
+-- spaces and parentheses, so an unquoted flag splits or fails to parse.
+--
+-- Example:
+--
+--   shellQuote "package-0.1-WMu8HV1Y (Package.A, Package.B.C)"
+--   => 'package-0.1-WMu8HV1Y (Package.A, Package.B.C)'
+--   shellQuote "Foo'Bar"
+--   => 'Foo'\''Bar'
+--   shellQuote ""
+--   => ''
+shellQuote :: Text -> Text
+shellQuote word = "'" <> T.replace "'" "'\\''" word <> "'"
